@@ -55,7 +55,10 @@ def run_review(spans, frames, region, out_dir, fps):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='casting-call speaker segmentation')
+    parser = argparse.ArgumentParser(
+        description='casting-call speaker segmentation',
+        epilog='User guide: docs/user-guide.html (open in a browser)',
+    )
     parser.add_argument('mov')
     parser.add_argument('--roster', default=str(Path(__file__).parent.parent / 'speakers_roster.json'))
     parser.add_argument('--region', help='x,y,w,h caption strip crop (full-frame px)')

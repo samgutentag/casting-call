@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>casting-call: User Guide</title>
+<style>
+  /* Tuned, print-friendly. Keep as-is; only retune --accent to the app's brand color. */
+  :root {
+    --ink:#1a1a1a; --mute:#555; --faint:#888; --rule:#ddd;
+    --accent:#3a4ba0; --code:#f4f5f7; --warn:#b2741a; --ok:#1d7a4d;
+    --callout:#eef0fb;
+  }
+  * { box-sizing:border-box; }
+  body {
+    font:16px/1.65 Georgia,"Iowan Old Style","Times New Roman",serif;
+    color:var(--ink); max-width:50rem; margin:0 auto; padding:2.5rem 1.5rem 5rem;
+  }
+  h1,h2,h3,h4,th,.lbl,nav,.tag { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; }
+  h1 { font-size:2rem; margin:0 0 .2rem; line-height:1.15; }
+  .subtitle { color:var(--mute); font-style:italic; margin:0 0 1.5rem; }
+  h2 { font-size:1.35rem; margin:2.4rem 0 .6rem; padding-top:1.1rem; border-top:2px solid var(--rule); }
+  h3 { font-size:1.08rem; margin:1.5rem 0 .35rem; }
+  h4 { font-size:.96rem; margin:1.1rem 0 .25rem; color:var(--mute); }
+  p { margin:.6rem 0; }
+  ul,ol { margin:.5rem 0; padding-left:1.4rem; } li { margin:.4rem 0; }
+  code { font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:.82em; background:var(--code); padding:.1em .35em; border-radius:3px; }
+  pre { background:var(--code); border:1px solid var(--rule); border-radius:6px; padding:.85rem 1rem; overflow-x:auto; font-size:.8rem; line-height:1.5; font-family:"SF Mono",ui-monospace,Menlo,monospace; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:.8rem 0; font-size:.9rem; }
+  th,td { text-align:left; padding:.42rem .55rem; border-bottom:1px solid var(--rule); vertical-align:top; }
+  th { font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); }
+  .note { border-left:3px solid var(--accent); background:var(--callout); padding:.55rem .9rem; margin:.9rem 0; font-size:.95rem; }
+  .warn { border-left:3px solid var(--warn); background:#fdf7ec; padding:.55rem .9rem; margin:.9rem 0; font-size:.95rem; }
+  .ok { border-left:3px solid var(--ok); background:#f1f8f3; padding:.55rem .9rem; margin:.9rem 0; font-size:.95rem; }
+  nav { background:var(--code); border:1px solid var(--rule); border-radius:8px; padding:1rem 1.25rem; margin:1.5rem 0 2rem; font-size:.9rem; }
+  nav h2 { border:none; padding:0; margin:0 0 .5rem; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); }
+  nav ol { margin:0; padding-left:1.3rem; columns:2; column-gap:2rem; }
+  nav a { color:var(--accent); text-decoration:none; }
+  nav a:hover { text-decoration:underline; }
+  .tag { display:inline-block; font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; background:var(--accent); color:#fff; padding:.08rem .42rem; border-radius:3px; vertical-align:middle; margin-left:.4rem; }
+  .tag.alt { background:#444; }
+  .defn { margin:.5rem 0; }
+  .defn dt { font-family:-apple-system,system-ui,sans-serif; font-weight:600; font-size:.92rem; }
+  .defn dd { margin:.1rem 0 .7rem; color:var(--ink); }
+  hr.soft { border:none; border-top:1px solid var(--rule); margin:1.6rem 0; }
+  figure { margin:1.6rem 0; }
+  figure .diagram { border:1px solid var(--rule); border-radius:8px; padding:1.1rem 1rem; background:#fff; }
+  figure svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+  figcaption { font-family:-apple-system,system-ui,sans-serif; font-size:.8rem; color:var(--mute); margin-top:.55rem; text-align:center; }
+  .svg-label { font-family:-apple-system,"Segoe UI",system-ui,sans-serif; }
+  .updated { color:var(--faint); font-size:.8rem; font-family:-apple-system,system-ui,sans-serif; }
+  @media print {
+    body { max-width:none; font-size:11.5pt; }
+    nav { break-inside:avoid; }
+    h2 { break-after:avoid; }
+    table,.note,.warn,.ok,figure { break-inside:avoid; }
+    a { color:inherit; text-decoration:none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>casting-call: User Guide</h1>
+<p class="subtitle">How to turn a Google Meet recording into a transcript that knows who said what. Written to be read cold, with no prior knowledge of the tool assumed.</p>
+
+<nav>
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#what">What this is</a></li>
+    <li><a href="#vocab">Words you need first</a></li>
+    <li><a href="#install">Before you start: install and roster</a></li>
+    <li><a href="#commands">The commands at a glance</a></li>
+    <li><a href="#transcribe">Transcribe a recording (ripa)</a></li>
+    <li><a href="#speakers">Attribute speakers (rips)</a></li>
+    <li><a href="#region">Finding the caption region</a></li>
+    <li><a href="#review">The review step</a></li>
+    <li><a href="#callers">2-person vs group calls</a></li>
+    <li><a href="#video">Compress the video (ripv, riprec)</a></li>
+    <li><a href="#data">Where the data comes from</a></li>
+    <li><a href="#faq">Good to know</a></li>
+  </ol>
+</nav>
+
+<h2 id="what">1. What this is</h2>
+<p>casting-call takes a screen recording of a Google Meet call and produces a transcript where each line is tagged with the real name of the person who spoke it. It is a set of command-line tools you run in a terminal. There is no window, no buttons, no app to open.</p>
+<p>The recording it expects is a stereo <code>.mov</code>: your microphone on the left audio channel, everyone else mixed together on the right channel, plus the Meet window visible on screen. Whisper transcribes the two audio channels into a time-stamped transcript. The catch is that the right channel mixes every remote participant into one undifferentiated voice the tool calls <code>Caller</code>. casting-call solves that by reading Meet's on-screen caption labels (which already say who is speaking) and using them to rewrite each <code>Caller</code> line with the speaker's actual name.</p>
+<p>It is built for one person: someone who records their own calls and wants searchable, attributed transcripts of them. It runs entirely on your machine. Nothing is uploaded, there is no account, and your roster of real names is kept local and out of version control.</p>
+<p>What it does NOT do: it does not record the call (you do that yourself with QuickTime plus a tool like Loopback), it does not do acoustic voice fingerprinting, and it does not guarantee perfect attribution when people talk over each other or when the Meet window is hidden. Anything it cannot confidently attribute stays labeled <code>Caller</code> rather than being guessed.</p>
+<p>The flow is three jobs you run from the terminal: transcribe the audio (<code>ripa</code>), build a speaker timeline and relabel the transcript (<code>rips</code>), and optionally compress the video (<code>ripv</code> / <code>riprec</code>). The rest of this guide walks each one.</p>
+
+<h2 id="vocab">2. Words you need first</h2>
+<dl class="defn">
+  <dt>Recording (the <code>.mov</code>)</dt>
+  <dd>The QuickTime screen capture of your call. Two audio channels (left = you, right = everyone else) and video that shows the Meet window with captions on. Everything downstream reads from this one file.</dd>
+  <dt>You / Caller</dt>
+  <dd>The two labels Whisper assigns by channel. <code>You</code> is your mic (the left channel). <code>Caller</code> is the merged right channel, every remote person at once. casting-call's whole job is replacing <code>Caller</code> with real names. Lines it cannot attribute keep the <code>Caller</code> label.</dd>
+  <dt>Roster</dt>
+  <dd>Your local file <code>speakers_roster.json</code>: your own name (<code>self</code>) plus the people you call, each with a canonical name and optional nicknames (aliases). The tool only ever attributes a line to someone on this list. It is gitignored, so your real names stay on your machine.</dd>
+  <dt>Caption region</dt>
+  <dd>The rectangle on screen where Meet draws its caption strip, given as <code>x,y,w,h</code> in full-frame pixels. You find it once per recording and pass it with <code>--region</code>. The tool reads names only from inside this box.</dd>
+  <dt>Speaker timeline (<code>speakers.json</code>)</dt>
+  <dd>The intermediate file <code>rips</code> writes: an ordered list of spans saying "from this second to that second, the speaker was X." This is what gets matched against the transcript to relabel <code>Caller</code> lines.</dd>
+  <dt>Span</dt>
+  <dd>One stretch of the timeline with a single speaker: a start time, an end time, and a name (or no name, if it could not be resolved).</dd>
+  <dt>Unresolved / review</dt>
+  <dd>When the tool reads a name from the captions but cannot match it to anyone on your roster, it marks that span unresolved and asks you about it in the review step. You can name it or wave it off, in which case it falls back to <code>Caller</code>.</dd>
+  <dt>Attribution / coverage</dt>
+  <dd>Attribution is the act of putting a real name on a <code>Caller</code> line. Coverage is the score at the end: how many <code>Caller</code> lines got a name versus how many stayed <code>Caller</code>.</dd>
+</dl>
+
+<h2 id="install">3. Before you start: install and roster</h2>
+<p>casting-call has no installer. You clone the repo and install its command-line dependencies through Homebrew and pip. From the README, verified against the dependency checks in <code>bin/extract_speakers.sh</code> and <code>bin/extract_audio_stereo.sh</code>:</p>
+<pre><code>brew install tesseract ffmpeg whisper-cpp
+pip install --break-system-packages pillow numpy pytesseract pytest</code></pre>
+<p>Whisper also needs a model file, downloaded once. The audio scripts look for it under <code>~/whisper-models/</code> and will print this exact command if it is missing:</p>
+<pre><code>mkdir -p ~/whisper-models
+curl -o ~/whisper-models/ggml-large-v3.bin -L \
+  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'</code></pre>
+<p>Then create your roster from the example and edit it. Set <code>self</code> to your own name (this is what Meet's <code>You</code> caption maps to), and list everyone you call:</p>
+<pre><code>cp speakers_roster.example.json speakers_roster.json
+# edit speakers_roster.json</code></pre>
+<p>A roster entry looks like this. The <code>canonical</code> name is what ends up in the transcript; the <code>aliases</code> are extra spellings or nicknames that help the fuzzy matcher when Meet shows a shortened label:</p>
+<pre><code>{
+  "self": "Sam Gutentag",
+  "members": [
+    { "canonical": "Dana Park", "aliases": ["D Park", "Dana"] }
+  ]
+}</code></pre>
+<div class="note">The tool can only attribute a line to a name that is on the roster. Someone you never added will always come back as an unresolved unknown in the review step, never as a name. Adding people you call often is the single biggest thing you can do to raise your coverage.</div>
+
+<h2 id="commands">4. The commands at a glance</h2>
+<p>The tools live in <code>bin/</code> as shell scripts. On Sam's machine each one is wrapped in a short shell alias (the <code>rip*</code> names). The alias definitions live in his separate <code>gutils</code> shell config, not in this repo, so if you have not set those up you can call the script directly instead (for example <code>bash bin/extract_speakers.sh ...</code> in place of <code>rips ...</code>).</p>
+<table>
+  <thead><tr><th>Alias</th><th>Script</th><th>What it does</th><th>Main output</th></tr></thead>
+  <tbody>
+    <tr><td><code>ripa</code></td><td><code>extract_audio_stereo.sh</code></td><td>Extract audio from every <code>.mov</code> in a folder, transcribe both channels, merge into one labeled transcript. If a <code>speakers.json</code> is present, relabels <code>Caller</code> lines automatically.</td><td><code>audio_only/*.mp3</code>, <code>transcripts/*.txt</code></td></tr>
+    <tr><td><code>rips</code></td><td><code>extract_speakers.sh</code></td><td>Read the on-screen captions, build the speaker timeline, run review, and (optionally) relabel an existing transcript. This is the speaker-attribution tool.</td><td><code>speakers.json</code></td></tr>
+    <tr><td><code>ript</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Batch-transcribe MP3s already extracted across dated subfolders. A bulk variant of <code>ripa</code>'s transcribe pass.</td><td><code>transcripts/*.txt</code></td></tr>
+    <tr><td><code>ripv</code></td><td><code>convert_video.sh</code></td><td>Compress each <code>.mov</code> to a smaller 1080p MP4.</td><td><code>converted_video/*.mp4</code></td></tr>
+    <tr><td><code>riprec</code></td><td><code>convert_recordings.sh</code></td><td>Convenience wrapper: extract audio and compress video in one pass.</td><td>audio + <code>converted_video/*.mp4</code></td></tr>
+  </tbody>
+</table>
+<div class="note">The aliases in the README and this table (<code>ripa</code>, <code>rips</code>, and so on) are defined outside this repo and may not exist in your shell. Throughout this guide, anywhere you see <code>rips</code> you can substitute <code>bash bin/extract_speakers.sh</code> run from the repo root.</div>
+
+<h2 id="transcribe">5. Transcribe a recording <span class="tag">ripa</span></h2>
+<p>Run <code>ripa</code> on a folder of recordings. With no argument it works in the current directory; the first argument is the folder and the optional second is a path to a different Whisper model.</p>
+<pre><code>ripa                       # transcribe every .mov in this folder
+ripa ~/calls/2026-06-04    # transcribe a specific folder</code></pre>
+<p>It works in two passes. First it extracts a stereo MP3 from every <code>.mov</code> into an <code>audio_only/</code> folder. Then it splits each recording into two mono tracks (your channel and the caller channel), runs Whisper on each, and merges the two results into one transcript sorted by time, with every line tagged <code>[You]</code> or <code>[Caller]</code>. Output lands in <code>transcripts/</code>. Files that already have a transcript are skipped, so re-running is safe and cheap.</p>
+<p>One important behavior: at the very end of each file, if a <code>speakers.json</code> already sits next to the recording, <code>ripa</code> automatically relabels the <code>Caller</code> lines from it and prints a coverage line. That means once you have run <code>rips</code> (next section) to produce the timeline, transcription and attribution happen together. If there is no <code>speakers.json</code>, you simply get plain <code>[Caller]</code> lines and nothing breaks.</p>
+<p>A finished transcript line looks like this:</p>
+<pre><code>[0:04:12] [You] So where did we land on the rollout?
+[0:04:18] [Caller] We pushed it to next sprint.</code></pre>
+
+<h2 id="speakers">6. Attribute speakers <span class="tag">rips</span></h2>
+<p>This is the core of the tool. <code>rips</code> takes a recording and the caption region, reads the captions frame by frame, and writes a <code>speakers.json</code> timeline next to the recording. Add <code>--transcript</code> and it will also rewrite that transcript's <code>Caller</code> lines in place.</p>
+<pre><code># build the timeline only
+rips recording.mov --region 120,1850,900,180
+
+# build the timeline AND relabel an existing transcript in place
+rips recording.mov --region 120,1850,900,180 --transcript transcripts/recording.txt</code></pre>
+<p>Every flag, read from <code>casting_call/cli.py</code>:</p>
+<table>
+  <thead><tr><th>Argument</th><th>Required</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>mov</code></td><td>yes</td><td>The recording to process (the one positional argument).</td></tr>
+    <tr><td><code>--region x,y,w,h</code></td><td>yes in v1</td><td>The caption strip rectangle in full-frame pixels. Required: if you omit it the tool exits with an error. Auto-locating it is a planned follow-up, not built yet.</td></tr>
+    <tr><td><code>--roster PATH</code></td><td>no</td><td>Path to the roster file. Defaults to <code>speakers_roster.json</code> at the repo root.</td></tr>
+    <tr><td><code>--out DIR</code></td><td>no</td><td>Where to write <code>speakers.json</code>, the extracted <code>frames/</code>, and the <code>review/</code> crops. Defaults to the same folder as the recording.</td></tr>
+    <tr><td><code>--transcript PATH</code></td><td>no</td><td>An existing transcript to relabel in place. Without it, <code>rips</code> only writes the timeline.</td></tr>
+    <tr><td><code>--callers N</code></td><td>no</td><td>How many OTHER people are on the call. <code>1</code> forces every <code>Caller</code> line onto the single other speaker; <code>2</code> or more forces timed, per-line attribution. Omit it to auto-detect.</td></tr>
+  </tbody>
+</table>
+<p>Under the hood <code>rips</code> runs a fixed pipeline, each stage feeding the next. The diagram below is the whole journey from recording to relabeled transcript.</p>
+
+<figure>
+  <div class="diagram">
+  <svg viewBox="0 0 640 300" role="img" aria-label="The casting-call speaker pipeline from recording to relabeled transcript">
+    <!-- row 1 -->
+    <rect x="20" y="20" width="120" height="46" rx="8" fill="#eef0fb" stroke="#3a4ba0"/>
+    <text x="80" y="40" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">sample</text>
+    <text x="80" y="55" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">frames @ 2 fps</text>
+    <line x1="140" y1="43" x2="178" y2="43" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="180" y="20" width="120" height="46" rx="8" fill="#fff" stroke="#3a4ba0"/>
+    <text x="240" y="40" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">locate</text>
+    <text x="240" y="55" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">crop --region box</text>
+    <line x1="300" y1="43" x2="338" y2="43" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="340" y="20" width="120" height="46" rx="8" fill="#fff" stroke="#3a4ba0"/>
+    <text x="400" y="40" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">read</text>
+    <text x="400" y="55" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">OCR + roster match</text>
+    <line x1="460" y1="43" x2="498" y2="43" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="500" y="20" width="120" height="46" rx="8" fill="#fff" stroke="#3a4ba0"/>
+    <text x="560" y="40" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">timeline</text>
+    <text x="560" y="55" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">spans</text>
+
+    <!-- connector down -->
+    <line x1="560" y1="66" x2="560" y2="110" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <!-- row 2 (right to left) -->
+    <rect x="500" y="112" width="120" height="46" rx="8" fill="#fff" stroke="#3a4ba0"/>
+    <text x="560" y="132" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">review</text>
+    <text x="560" y="147" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">name the unknowns</text>
+    <line x1="500" y1="135" x2="462" y2="135" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="340" y="112" width="120" height="46" rx="8" fill="#f1f8f3" stroke="#1d7a4d"/>
+    <text x="400" y="132" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">speakers.json</text>
+    <text x="400" y="147" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">written to disk</text>
+    <line x1="340" y1="135" x2="302" y2="135" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="180" y="112" width="120" height="46" rx="8" fill="#fff" stroke="#3a4ba0"/>
+    <text x="240" y="129" text-anchor="middle" class="svg-label" font-size="11.5" font-weight="700" fill="#1a1a1a">relabel</text>
+    <text x="240" y="143" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">--transcript only</text>
+    <line x1="180" y1="135" x2="142" y2="135" stroke="#888" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="20" y="112" width="120" height="46" rx="8" fill="#f1f8f3" stroke="#1d7a4d"/>
+    <text x="80" y="132" text-anchor="middle" class="svg-label" font-size="11" font-weight="700" fill="#1a1a1a">named transcript</text>
+    <text x="80" y="147" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">+ coverage %</text>
+
+    <!-- audio note -->
+    <rect x="20" y="210" width="600" height="60" rx="8" fill="#fdf7ec" stroke="#b2741a"/>
+    <text x="320" y="233" text-anchor="middle" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">The words come from a separate audio pipeline (ripa / Whisper).</text>
+    <text x="320" y="251" text-anchor="middle" class="svg-label" font-size="9.5" fill="#555">rips only supplies the NAMES. The on-screen captions are never used for the transcript text.</text>
+
+    <defs>
+      <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker>
+    </defs>
+  </svg>
+  </div>
+  <figcaption>Two of these stages write a file you keep: <code>speakers.json</code> (the timeline) and, with <code>--transcript</code>, the relabeled transcript. Everything else is intermediate.</figcaption>
+</figure>
+
+<h2 id="region">7. Finding the caption region</h2>
+<p>The hardest part of using <code>rips</code> is the <code>--region</code> value, because the Meet window can sit anywhere on screen and its position is not guaranteed to be the same from one recording to the next. You give the tool a rectangle so it knows where to look for caption text and ignores the rest of the screen.</p>
+<p>The format is four numbers, comma-separated, in full-frame pixels of the original recording (which can be Retina-resolution, for example 4096 by 2304): <code>x,y,w,h</code>. <code>x,y</code> is the top-left corner of the box, <code>w,h</code> is its width and height. Aim the box at the bottom strip of the Meet window where captions appear, generous enough to catch the name labels but tight enough to exclude other on-screen text.</p>
+<p>The practical way to find it: open one frame of your recording in an image editor or Preview, draw a selection over the caption strip, and read off the pixel coordinates. You only need to do this once per recording. If the box is wrong, the tool will either read nothing (no signal, everything stays <code>Caller</code>) or read the wrong region.</p>
+
+<figure>
+  <div class="diagram">
+  <svg viewBox="0 0 640 230" role="img" aria-label="The four numbers of the region argument mapped onto a video frame">
+    <!-- full frame -->
+    <rect x="40" y="20" width="380" height="190" rx="4" fill="#f4f5f7" stroke="#888"/>
+    <text x="48" y="36" class="svg-label" font-size="9" fill="#888">full recording frame</text>
+    <!-- meet window -->
+    <rect x="90" y="55" width="260" height="120" rx="4" fill="#fff" stroke="#bbb"/>
+    <!-- caption box -->
+    <rect x="110" y="140" width="200" height="26" rx="3" fill="#3a4ba0" fill-opacity="0.18" stroke="#3a4ba0" stroke-width="2"/>
+    <text x="118" y="157" class="svg-label" font-size="10" font-weight="700" fill="#1a1a1a">Dana Park:</text>
+    <!-- x offset -->
+    <line x1="40" y1="195" x2="110" y2="195" stroke="#b2741a" stroke-width="1" marker-end="url(#ar2)" marker-start="url(#ar2s)"/>
+    <text x="60" y="190" class="svg-label" font-size="8.5" fill="#b2741a">x</text>
+    <!-- y offset -->
+    <line x1="60" y1="20" x2="60" y2="140" stroke="#b2741a" stroke-width="1" marker-end="url(#ar2)" marker-start="url(#ar2s)"/>
+    <text x="64" y="85" class="svg-label" font-size="8.5" fill="#b2741a">y</text>
+
+    <!-- legend -->
+    <text x="445" y="60" class="svg-label" font-size="12" font-weight="700" fill="#3a4ba0">x,y,w,h</text>
+    <text x="445" y="84" class="svg-label" font-size="10" fill="#1a1a1a">x = box left edge</text>
+    <text x="445" y="102" class="svg-label" font-size="10" fill="#1a1a1a">y = box top edge</text>
+    <text x="445" y="120" class="svg-label" font-size="10" fill="#1a1a1a">w = box width</text>
+    <text x="445" y="138" class="svg-label" font-size="10" fill="#1a1a1a">h = box height</text>
+    <text x="445" y="166" class="svg-label" font-size="9" fill="#555">all in full-frame</text>
+    <text x="445" y="180" class="svg-label" font-size="9" fill="#555">pixels, not %</text>
+
+    <defs>
+      <marker id="ar2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L5,3 L0,6 Z" fill="#b2741a"/></marker>
+      <marker id="ar2s" markerWidth="7" markerHeight="7" refX="0" refY="3" orient="auto"><path d="M5,0 L0,3 L5,6 Z" fill="#b2741a"/></marker>
+    </defs>
+  </svg>
+  </div>
+  <figcaption>The box only needs to cover the name label, not the whole caption. The tool reads the name token that leads each caption line.</figcaption>
+</figure>
+
+<h2 id="review">8. The review step</h2>
+<p>When <code>rips</code> reads a name from the captions that it cannot match to anyone on your roster, it does not guess. It marks that span as an unresolved unknown and, after building the timeline, walks you through them in the terminal. It tells you up front how many distinct unknowns there are, so you can decide whether it is worth the effort.</p>
+<p>For each unknown it saves a cropped image of the caption (named <code>unknown_01.png</code>, <code>unknown_02.png</code>, and so on) into a <code>review/</code> folder, shows you the raw OCR text it read, and prompts you for a name:</p>
+<pre><code>3 distinct unknown speaker(s) to review.
+Enter a name for each, or "skip"/Enter to make the rest Caller.
+
+unknown_01 (raw OCR "Jrdn M.", crop unknown_01.png) -> </code></pre>
+<p>Open the crop image to see who it is, type their name, and press Enter. You can stop at any time: typing <code>skip</code> or just pressing Enter ends review immediately and collapses every remaining unknown to <code>Caller</code>. You are never forced to clear the whole queue. Anything you do not resolve simply stays <code>Caller</code>, which is the same as the old behavior, so review can only improve the result, never make it worse.</p>
+<div class="note">If you find yourself naming the same person across many calls, add them to <code>speakers_roster.json</code>. Once they are on the roster the tool matches them automatically and they stop showing up in review.</div>
+
+<h2 id="callers">9. 2-person vs group calls</h2>
+<p>The <code>--callers</code> flag controls how <code>Caller</code> lines get attributed, and it matters because the two cases are genuinely different.</p>
+<p>On a 2-person call there is only one other voice, so timing does not matter: every <code>Caller</code> line must be that one person. The tool detects this automatically when the timeline contains exactly one named non-self speaker and collapses all <code>Caller</code> lines onto them. You will see a message like <code>2-person call: 'Dana Park' is the only other speaker -&gt; all Caller lines attributed to them</code>.</p>
+<p>On a group call, timing is everything: each <code>Caller</code> line is matched to whoever the timeline says was speaking at that moment. To force this, pass <code>--callers 2</code> (or higher). To force the single-speaker collapse instead, pass <code>--callers 1</code>. If you pass <code>--callers 1</code> but the tool actually detected more than one speaker, it will warn you and fall back to timed attribution rather than mislabel everyone.</p>
+<div class="note">Verified against <code>casting_call/transcript.py</code>: a timed relabel looks up the speaker at each line's timestamp shifted back by the caption-lag offset (1.5 seconds by default), because captions trail the spoken audio. Spans where the timeline says you were speaking are treated as bleed from your mic into the caller channel and stay <code>Caller</code>.</div>
+
+<h2 id="video">10. Compress the video <span class="tag">ripv</span> <span class="tag alt">riprec</span></h2>
+<p>These are housekeeping tools, separate from transcription. <code>ripv</code> takes a folder and compresses each <code>.mov</code> into a smaller 1080p MP4 under <code>converted_video/</code>, useful for archiving raw recordings that are large. <code>riprec</code> is a convenience wrapper that runs audio extraction and video compression together.</p>
+<pre><code>ripv ~/calls/2026-06-04     # compress every .mov in the folder to mp4
+riprec ~/calls/2026-06-04   # extract audio + compress video in one pass</code></pre>
+<p>Neither of these does speaker attribution. They exist because the same recordings that you transcribe are also the ones you want to shrink for storage.</p>
+
+<h2 id="data">11. Where the data comes from</h2>
+<p>It is worth being precise about which file supplies what, because the words and the names come from two completely separate sources.</p>
+<p>The <strong>transcript text</strong> comes only from the audio, through Whisper. The left and right channels are split, transcribed separately, and merged by timestamp. The on-screen captions are never used for the words themselves, because caption text is too low-quality. The captions supply only the speaker names.</p>
+<p>The <strong>speaker names</strong> come from the video: <code>rips</code> samples frames at 2 frames per second, crops the caption region, OCRs it with tesseract, and fuzzy-matches the leading name token against your roster. A match above the threshold (0.72 by default) becomes that person's canonical name; <code>You</code> maps to your <code>self</code> name; anything below threshold becomes an unknown for review.</p>
+<p>A few defaults shape the result, all read from <code>casting_call/config.py</code>:</p>
+<table>
+  <thead><tr><th>Setting</th><th>Default</th><th>What it controls</th></tr></thead>
+  <tbody>
+    <tr><td>frame rate</td><td>2 fps</td><td>How often frames are sampled. Speaking turns run longer than this, so 2 fps is enough.</td></tr>
+    <tr><td>match threshold</td><td>0.72</td><td>How close an OCR'd name must be to a roster name to count as a match. Below it, the name goes to review.</td></tr>
+    <tr><td>debounce</td><td>1.0 s</td><td>Speaker flickers shorter than this are dropped, so a one-frame misread does not fragment a turn.</td></tr>
+    <tr><td>grace bridge</td><td>3.0 s</td><td>A short gap flanked by the same speaker is absorbed, so a quick window switch does not split one turn into Name / Caller / Name.</td></tr>
+    <tr><td>caption lag</td><td>1.5 s</td><td>Captions trail the audio, so timed lookups are shifted back by this much to line up with Whisper's timestamps.</td></tr>
+  </tbody>
+</table>
+<div class="note">These are defined in code, not exposed as command-line flags. To change them you edit <code>config.py</code>. The only knobs on the command line are <code>--region</code>, <code>--roster</code>, <code>--out</code>, <code>--transcript</code>, and <code>--callers</code>.</div>
+
+<h2 id="faq">12. Good to know</h2>
+<dl class="defn">
+  <dt>Does it send my calls or names anywhere?</dt>
+  <dd>No. Everything runs locally: ffmpeg, Whisper, and tesseract all run on your machine, and there is no account or network upload. Your roster of real names is gitignored and stays on disk.</dd>
+  <dt>What if the captions were off during the call?</dt>
+  <dd>Then there is nothing for <code>rips</code> to read, no <code>speakers.json</code> gets a useful timeline, and every line stays <code>Caller</code>. Captions must be ON during the recording. This is the one setup requirement that the tool cannot work around.</dd>
+  <dt>What if the Meet window was hidden or I switched tabs mid-call?</dt>
+  <dd>Those frames fail an occlusion check (the caption strip is normally a dark translucent band; when Meet is covered the region reads as something else) and are marked "no signal." Attribution falls back to <code>Caller</code> for that stretch, but the words are never lost, because the audio is recorded independently of what is on screen.</dd>
+  <dt>It attributed a line to the wrong person. Why?</dt>
+  <dd>Most often the caption lag or a turn boundary: a line right at the handoff between two speakers can land on the previous one. The 1.5 s lag offset corrects the common case but not every edge. Heavy crosstalk is explicitly not solved; ambiguous lines are meant to stay <code>Caller</code> rather than be guessed.</dd>
+  <dt>Can I just run it again if I get it wrong?</dt>
+  <dd>Yes. <code>rips</code> rewrites <code>speakers.json</code> each run, and <code>--transcript</code> relabels in place. Re-run with a corrected <code>--region</code> or an updated roster. Note that relabeling is in place, so keep an original copy of a transcript if you want to compare.</dd>
+  <dt>What does the coverage number mean?</dt>
+  <dd>It is the share of originally-<code>Caller</code> lines that ended up with a real name. "82%" means 18% of caller lines stayed <code>Caller</code> (captions off, window covered, below-threshold names you skipped, or genuine silence). It is a quick read on how well attribution went.</dd>
+  <dt>Do I have to use the rip aliases?</dt>
+  <dd>No. They are personal shell shortcuts defined outside this repo. You can call the scripts directly, for example <code>bash bin/extract_speakers.sh recording.mov --region ...</code> from the repo root.</dd>
+</dl>
+
+<hr class="soft">
+<p class="updated">Companion guide to casting-call. If the tool behaves differently from this guide, the code is the source of truth.</p>
+
+</body>
+</html>

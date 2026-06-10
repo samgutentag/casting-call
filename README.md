@@ -6,6 +6,8 @@ Records a stereo `.mov` (left = your mic, right = everyone else) plus the on-scr
 window. Whisper transcribes the two audio channels; the speaker layer reads Meet's on-screen
 caption labels to attribute the otherwise-undifferentiated "Caller" channel to named speakers.
 
+**New here?** Read the [user guide](docs/user-guide.html) for a plain-language, read-cold tour of the whole pipeline: install, the commands, the caption region, the review step, and what gets written to disk. Open it in a browser.
+
 ## Pipeline (bin/)
 - `extract_audio_stereo.sh` (`ripa`) — extract stereo audio + transcribe + relabel speakers
 - `transcribe_batch_stereo.sh` (`ript`) — batch transcribe across date dirs

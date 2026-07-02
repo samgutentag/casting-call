@@ -62,7 +62,7 @@
 <body>
 
 <h1>casting-call: User Guide</h1>
-<p class="subtitle">How to turn a Google Meet recording into a transcript that knows who said what. Written to be read cold, with no prior knowledge of the tool assumed.</p>
+<p class="subtitle">How to turn a Google Meet recording into a transcript that knows who said what, and how they said it. Written to be read cold, with no prior knowledge of the tool assumed.</p>
 
 <nav>
   <h2>Contents</h2>
@@ -77,6 +77,8 @@
     <li><a href="#review">The review step</a></li>
     <li><a href="#callers">2-person vs group calls</a></li>
     <li><a href="#video">Compress the video (ripv, riprec)</a></li>
+    <li><a href="#stitch">When the audio never showed up: caption stitching</a></li>
+    <li><a href="#affect">The affect layer: how it was said</a></li>
     <li><a href="#data">Where the data comes from</a></li>
     <li><a href="#faq">Good to know</a></li>
   </ol>
@@ -87,7 +89,164 @@
 <p>The recording it expects is a stereo <code>.mov</code>: your microphone on the left audio channel, everyone else mixed together on the right channel, plus the Meet window visible on screen. Whisper transcribes the two audio channels into a time-stamped transcript. The catch is that the right channel mixes every remote participant into one undifferentiated voice the tool calls <code>Caller</code>. casting-call solves that by reading Meet's on-screen caption labels (which already say who is speaking) and using them to rewrite each <code>Caller</code> line with the speaker's actual name.</p>
 <p>It is built for one person: someone who records their own calls and wants searchable, attributed transcripts of them. It runs entirely on your machine. Nothing is uploaded, there is no account, and your roster of real names is kept local and out of version control.</p>
 <p>What it does NOT do: it does not record the call (you do that yourself with QuickTime plus a tool like Loopback), it does not do acoustic voice fingerprinting, and it does not guarantee perfect attribution when people talk over each other or when the Meet window is hidden. Anything it cannot confidently attribute stays labeled <code>Caller</code> rather than being guessed.</p>
-<p>The flow is three jobs you run from the terminal: transcribe the audio (<code>ripa</code>), build a speaker timeline and relabel the transcript (<code>rips</code>), and optionally compress the video (<code>ripv</code> / <code>riprec</code>). The rest of this guide walks each one.</p>
+<p>The flow is three jobs you run from the terminal: transcribe the audio (<code>ripa</code>), build a speaker timeline and relabel the transcript (<code>rips</code>), and optionally compress the video (<code>ripv</code> / <code>riprec</code>). Around them sit three safety nets and extensions: <code>callcheck</code> verifies your rig captured both sides before you need it to have, the caption stitcher recovers a full transcript when a channel's audio never made it to disk, and the affect layer measures how things were said (pitch, energy, smiles, nods) on top of what was said. The rest of this guide walks each one.</p>
+
+<figure>
+  <div class="diagram">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 328" width="660" height="328" role="img" aria-label="Pipeline diagram: a stereo .mov screen recording fans out into three lanes. The audio lane splits the left and right channels (your mic and the call audio), runs whisper-cli, and produces a transcript attributed to You and Caller. The vision lane extracts caption frames, runs OCR against the roster, and builds a speaker timeline, or a full stitch when audio is missing. The affect lane runs prosody.py and faces.py to produce sigma tags. All three lanes merge into one annotated transcript on the right. The animation fires an amber scan bar under each stage in sequence, lane by lane, then the annotated transcript chip turns green with a check badge and holds before looping.">
+  <!--
+    casting-call pipeline animation.
+
+    TIMING (10s loop, one scan = 0.5s = 5%, pauses about 0.3s = 3%):
+      A1 mic split scans      0% to  5%   then green
+      A2 whisper-cli scans    8% to 13%
+      A3 transcript scans    16% to 21%
+      B1 caption frames      24% to 29%
+      B2 OCR + roster        32% to 37%
+      B3 speaker timeline    40% to 45%
+      C1 prosody + faces     48% to 53%
+      C2 sigma tags          56% to 61%
+      final chip goes green  64% to 67% (glow), badge pops 66% to 69%
+      finished frame HOLDS   69% to 100% (about 3.1s linger)
+    (Comment rule: write "to", never a double hyphen, inside XML comments.)
+  -->
+  <style>
+    .bar { transform-box: fill-box; transform-origin: left center; }
+    .bA1 { animation: ppBarA1 10s linear infinite; }
+    .bA2 { animation: ppBarA2 10s linear infinite; }
+    .bA3 { animation: ppBarA3 10s linear infinite; }
+    .bB1 { animation: ppBarB1 10s linear infinite; }
+    .bB2 { animation: ppBarB2 10s linear infinite; }
+    .bB3 { animation: ppBarB3 10s linear infinite; }
+    .bC1 { animation: ppBarC1 10s linear infinite; }
+    .bC2 { animation: ppBarC2 10s linear infinite; }
+    .glow { animation: ppGlow 10s linear infinite; }
+    .badge { animation: ppBadge 10s linear infinite; }
+    @keyframes ppBarA1 { 0% { transform: scaleX(0); fill: #e8932a; } 5% { transform: scaleX(1); fill: #e8932a; } 6%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarA2 { 0%,8% { transform: scaleX(0); fill: #e8932a; } 13% { transform: scaleX(1); fill: #e8932a; } 14%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarA3 { 0%,16% { transform: scaleX(0); fill: #e8932a; } 21% { transform: scaleX(1); fill: #e8932a; } 22%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarB1 { 0%,24% { transform: scaleX(0); fill: #e8932a; } 29% { transform: scaleX(1); fill: #e8932a; } 30%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarB2 { 0%,32% { transform: scaleX(0); fill: #e8932a; } 37% { transform: scaleX(1); fill: #e8932a; } 38%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarB3 { 0%,40% { transform: scaleX(0); fill: #e8932a; } 45% { transform: scaleX(1); fill: #e8932a; } 46%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarC1 { 0%,48% { transform: scaleX(0); fill: #e8932a; } 53% { transform: scaleX(1); fill: #e8932a; } 54%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppBarC2 { 0%,56% { transform: scaleX(0); fill: #e8932a; } 61% { transform: scaleX(1); fill: #e8932a; } 62%,100% { transform: scaleX(1); fill: #1d9b54; } }
+    @keyframes ppGlow { 0%,64% { opacity: 0; } 67%,100% { opacity: 1; } }
+    @keyframes ppBadge { 0%,66% { opacity: 0; } 69%,100% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .bar, .badge, .glow { animation: none; }
+      .bar { transform: scaleX(1); fill: #1d9b54; }
+      .badge, .glow { opacity: 1; }
+    }
+  </style>
+
+  <defs>
+    <marker id="ppArrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto">
+      <path d="M0,0 L6,3.5 L0,7 Z" fill="#9aa3b0"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="660" height="328" rx="10" fill="#ffffff"/>
+  <text x="16" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.5" font-weight="700" fill="#3a4350">From recording to annotated transcript</text>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <!-- Connectors -->
+    <g fill="none" stroke="#9aa3b0" stroke-width="1.3">
+      <path d="M59 144 V80 H112"/>
+      <path d="M112 80 V61 H124" marker-end="url(#ppArrow)"/>
+      <path d="M112 80 V99 H124" marker-end="url(#ppArrow)"/>
+      <path d="M190 61 H206 V78 H222" marker-end="url(#ppArrow)"/>
+      <path d="M190 99 H206 V78"/>
+      <path d="M306 78 H346" marker-end="url(#ppArrow)"/>
+      <path d="M440 78 H500 V146 H530" marker-end="url(#ppArrow)"/>
+      <path d="M98 162 H124" marker-end="url(#ppArrow)"/>
+      <path d="M208 162 H246" marker-end="url(#ppArrow)"/>
+      <path d="M330 162 H368" marker-end="url(#ppArrow)"/>
+      <path d="M458 162 H530" marker-end="url(#ppArrow)"/>
+      <path d="M59 180 V251 H124" marker-end="url(#ppArrow)"/>
+      <path d="M194 235 H216 V251 H234" marker-end="url(#ppArrow)"/>
+      <path d="M194 267 H216 V251"/>
+      <path d="M304 251 H480 V178 H530" marker-end="url(#ppArrow)"/>
+    </g>
+
+    <!-- Source chip: the stereo screen recording -->
+    <rect x="20" y="144" width="78" height="36" rx="8" fill="#eef1f5" stroke="#9aa3b0" stroke-width="1.5"/>
+    <text x="59" y="159" text-anchor="middle" font-size="10.5" font-weight="700" fill="#5b6573">.mov</text>
+    <text x="59" y="172" text-anchor="middle" font-size="10.5" fill="#5b6573">recording</text>
+    <text x="64" y="214" font-size="9" fill="#8a93a3">audio + video</text>
+
+    <!-- Lane 1: audio (blue) -->
+    <text x="130" y="40" font-size="9.5" font-weight="700" fill="#1f5fc0">audio</text>
+    <rect x="130" y="46" width="60" height="30" rx="6" fill="#e3edfc" stroke="#346DDB" stroke-width="1.5"/>
+    <text x="160" y="59" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1f5fc0">L:</text>
+    <text x="160" y="70" text-anchor="middle" font-size="9.5" fill="#1f5fc0">your mic</text>
+    <rect x="130" y="84" width="60" height="30" rx="6" fill="#e3edfc" stroke="#346DDB" stroke-width="1.5"/>
+    <text x="160" y="97" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1f5fc0">R:</text>
+    <text x="160" y="108" text-anchor="middle" font-size="9.5" fill="#1f5fc0">call audio</text>
+    <rect x="130" y="120" width="60" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bA1" x="130" y="120" width="60" height="5" rx="2.5" fill="#e8932a"/>
+
+    <rect x="228" y="61" width="78" height="34" rx="8" fill="#e3edfc" stroke="#346DDB" stroke-width="1.5"/>
+    <text x="267" y="82" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1f5fc0">whisper-cli</text>
+    <rect x="228" y="101" width="78" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bA2" x="228" y="101" width="78" height="5" rx="2.5" fill="#e8932a"/>
+
+    <rect x="352" y="61" width="88" height="34" rx="8" fill="#e3edfc" stroke="#346DDB" stroke-width="1.5"/>
+    <text x="396" y="75" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1f5fc0">transcript</text>
+    <text x="396" y="88" text-anchor="middle" font-size="9" fill="#1f5fc0">[You] / [Caller]</text>
+    <rect x="352" y="101" width="88" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bA3" x="352" y="101" width="88" height="5" rx="2.5" fill="#e8932a"/>
+
+    <!-- Lane 2: vision (purple) -->
+    <text x="130" y="140" font-size="9.5" font-weight="700" fill="#5a3fb0">vision</text>
+    <rect x="130" y="145" width="78" height="34" rx="8" fill="#eee7fb" stroke="#7c5cdb" stroke-width="1.5"/>
+    <text x="169" y="159" text-anchor="middle" font-size="10.5" font-weight="700" fill="#5a3fb0">caption</text>
+    <text x="169" y="172" text-anchor="middle" font-size="10.5" fill="#5a3fb0">frames</text>
+    <rect x="130" y="185" width="78" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bB1" x="130" y="185" width="78" height="5" rx="2.5" fill="#e8932a"/>
+
+    <rect x="252" y="145" width="78" height="34" rx="8" fill="#eee7fb" stroke="#7c5cdb" stroke-width="1.5"/>
+    <text x="291" y="166" text-anchor="middle" font-size="10" font-weight="700" fill="#5a3fb0">OCR + roster</text>
+    <rect x="252" y="185" width="78" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bB2" x="252" y="185" width="78" height="5" rx="2.5" fill="#e8932a"/>
+
+    <rect x="374" y="145" width="84" height="34" rx="8" fill="#eee7fb" stroke="#7c5cdb" stroke-width="1.5"/>
+    <text x="416" y="159" text-anchor="middle" font-size="10.5" font-weight="700" fill="#5a3fb0">speaker</text>
+    <text x="416" y="172" text-anchor="middle" font-size="10.5" fill="#5a3fb0">timeline</text>
+    <rect x="374" y="185" width="84" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bB3" x="374" y="185" width="84" height="5" rx="2.5" fill="#e8932a"/>
+    <text x="374" y="203" font-size="9" fill="#8a93a3">or full stitch when audio is missing</text>
+
+    <!-- Lane 3: affect (teal) -->
+    <text x="130" y="216" font-size="9.5" font-weight="700" fill="#0e7d70">affect</text>
+    <rect x="130" y="222" width="64" height="26" rx="6" fill="#e2f4f1" stroke="#18a394" stroke-width="1.5"/>
+    <text x="162" y="239" text-anchor="middle" font-size="9.5" fill="#0e7d70">prosody.py</text>
+    <rect x="130" y="254" width="64" height="26" rx="6" fill="#e2f4f1" stroke="#18a394" stroke-width="1.5"/>
+    <text x="162" y="271" text-anchor="middle" font-size="9.5" fill="#0e7d70">faces.py</text>
+    <rect x="130" y="286" width="64" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bC1" x="130" y="286" width="64" height="5" rx="2.5" fill="#e8932a"/>
+
+    <rect x="240" y="234" width="64" height="34" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1.5"/>
+    <text x="272" y="255" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0e7d70">&#963; tags</text>
+    <rect x="240" y="274" width="64" height="5" rx="2.5" fill="#d9dee6"/>
+    <rect class="bar bC2" x="240" y="274" width="64" height="5" rx="2.5" fill="#e8932a"/>
+
+    <!-- Final merged chip -->
+    <rect x="536" y="134" width="108" height="56" rx="8" fill="#eef1f5" stroke="#9aa3b0" stroke-width="1.5"/>
+    <rect class="glow" x="536" y="134" width="108" height="56" rx="8" fill="#e4f5ea" stroke="#1d9b54" stroke-width="1.5"/>
+    <text x="590" y="158" text-anchor="middle" font-size="11" font-weight="700" fill="#3a4350">annotated</text>
+    <text x="590" y="172" text-anchor="middle" font-size="11" font-weight="700" fill="#3a4350">transcript</text>
+    <g class="badge">
+      <circle cx="636" cy="136" r="6.5" fill="#1d9b54" stroke="#fff" stroke-width="1.3"/>
+      <polyline points="633,136 635,138.4 639,133.6" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <text x="16" y="316" font-size="11.5" fill="#5b6573">Scans fire down each lane; when all three lanes land, the merged transcript goes green.</text>
+  </g>
+</svg>
+  </div>
+  <figcaption>One recording, three lanes. Audio carries the words, vision carries the names, affect carries the delivery; the transcript at the end holds all three. The vision lane doubles as the words when a channel of audio is missing.</figcaption>
+</figure>
+
 
 <h2 id="vocab">2. Words you need first</h2>
 <dl class="defn">
@@ -107,12 +266,24 @@
   <dd>When the tool reads a name from the captions but cannot match it to anyone on your roster, it marks that span unresolved and asks you about it in the review step. You can name it or wave it off, in which case it falls back to <code>Caller</code>.</dd>
   <dt>Attribution / coverage</dt>
   <dd>Attribution is the act of putting a real name on a <code>Caller</code> line. Coverage is the score at the end: how many <code>Caller</code> lines got a name versus how many stayed <code>Caller</code>.</dd>
+  <dt>Stitching / committed stream</dt>
+  <dd>The fallback transcript path. Meet redraws its caption box as text scrolls, so consecutive frames overlap heavily; the stitcher OCRs every frame and appends only each frame's new tail onto one growing "committed stream" of tokens. Used when a channel's audio is missing and the captions are the only record of the words.</dd>
+  <dt>Utterance</dt>
+  <dd>One stretch of one speaker's talk, bounded by transcript timestamps. The unit the affect layer measures: each utterance gets its own pitch, energy, and pace numbers.</dd>
+  <dt>Baseline / z-score (the σ numbers)</dt>
+  <dd>Every affect measurement is compared to that speaker's own average across the call, expressed in standard deviations (σ). "+1.4σ pitch range" means unusually animated <em>for them</em>. Absolute values are never compared between people, because some people just talk flat and some just smile a lot.</dd>
 </dl>
 
 <h2 id="install">3. Before you start: install and roster</h2>
 <p>casting-call has no installer. You clone the repo and install its command-line dependencies through Homebrew and pip. From the README, verified against the dependency checks in <code>bin/extract_speakers.sh</code> and <code>bin/extract_audio_stereo.sh</code>:</p>
 <pre><code>brew install tesseract ffmpeg whisper-cpp
-pip install --break-system-packages pillow numpy pytesseract pytest</code></pre>
+pip install --break-system-packages pillow numpy pytesseract pytest
+# affect layer (optional until you use it):
+pip install --break-system-packages praat-parselmouth mediapipe</code></pre>
+<p>The facial-affect module also needs a landmark model, fetched once (about 4 MB):</p>
+<pre><code>mkdir -p ~/.cache/casting-call
+curl -sL -o ~/.cache/casting-call/face_landmarker.task \
+  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"</code></pre>
 <p>Whisper also needs a model file, downloaded once. The audio scripts look for it under <code>~/whisper-models/</code> and will print this exact command if it is missing:</p>
 <pre><code>mkdir -p ~/whisper-models
 curl -o ~/whisper-models/ggml-large-v3.bin -L \
@@ -139,8 +310,10 @@ curl -o ~/whisper-models/ggml-large-v3.bin -L \
     <tr><td><code>ript</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Batch-transcribe MP3s already extracted across dated subfolders. A bulk variant of <code>ripa</code>'s transcribe pass.</td><td><code>transcripts/*.txt</code></td></tr>
     <tr><td><code>ripv</code></td><td><code>convert_video.sh</code></td><td>Compress each <code>.mov</code> to a smaller 1080p MP4.</td><td><code>converted_video/*.mp4</code></td></tr>
     <tr><td><code>riprec</code></td><td><code>convert_recordings.sh</code></td><td>Convenience wrapper: extract audio and compress video in one pass.</td><td>audio + <code>converted_video/*.mp4</code></td></tr>
+    <tr><td><code>callcheck</code></td><td><code>callcheck.sh</code></td><td>Verify a recording (or a 6-second live capture) actually has BOTH sides of the call. A channel whose mean volume sits below &minus;55&nbsp;dB is judged dead. Run it at the start of every important call.</td><td>verdict on stdout; exit 0 both live, 1 a channel is dead, 2 usage error</td></tr>
   </tbody>
 </table>
+<div class="warn">Two more scripts sit in <code>bin/</code> without aliases: <code>transcribe_batch.sh</code> (mono, no speaker split) and <code>extract_audio.sh</code> (called internally by <code>riprec</code>). Also note the models differ: <code>ripa</code> defaults to the full <code>ggml-large-v3.bin</code>, while the batch scripts default to the smaller quantized <code>ggml-large-v3-q5_0.bin</code>. Same family, different file; the missing-model error message tells you which one to fetch.</div>
 <div class="note">The aliases in the README and this table (<code>ripa</code>, <code>rips</code>, and so on) are defined outside this repo and may not exist in your shell. Throughout this guide, anywhere you see <code>rips</code> you can substitute <code>bash bin/extract_speakers.sh</code> run from the repo root.</div>
 
 <h2 id="transcribe">5. Transcribe a recording <span class="tag">ripa</span></h2>
@@ -296,7 +469,260 @@ unknown_01 (raw OCR "Jrdn M.", crop unknown_01.png) -> </code></pre>
 riprec ~/calls/2026-06-04   # extract audio + compress video in one pass</code></pre>
 <p>Neither of these does speaker attribution. They exist because the same recordings that you transcribe are also the ones you want to shrink for storage.</p>
 
-<h2 id="data">11. Where the data comes from</h2>
+<h2 id="stitch">11. When the audio never showed up: caption stitching</h2>
+<p>Sooner or later a recording comes back with one channel silent. The mic captured you, the system-audio tap failed, and the other side of the call simply is not on disk. (<code>callcheck</code> exists to catch this before the call; this section exists for when you did not run it.) The words are not gone, though. If captions were on, Meet burned every sentence into the video as on-screen text, and the stitcher can recover a full attributed transcript from that.</p>
+<p>The mechanism: Meet redraws the caption box as text scrolls, so two frames sampled a half-second apart share most of their text. <code>casting_call.stitch</code> OCRs every caption-band frame, aligns each frame's tokens against the tail of what it has already committed, and appends only the new tail. Speaker labels in the captions (matched against your roster, threshold 0.72) become inline turn markers. Three details do the quality work, all read from <code>casting_call/stitch.py</code>: words below OCR confidence 70 are dropped (faded mid-scroll text), an alignment is only trusted at 4 or more consecutive matching tokens, and each frame's bottom caption line is held back until it stabilizes in a later frame, because Meet is still revising it (interim results).</p>
+
+<figure>
+  <div class="diagram">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 290" width="660" height="290" role="img" aria-label="Three OCR'd caption frames labeled frame N, frame N+1, and frame N+2 sit side by side; each holds short token pills and a grey italic interim line that gets dropped. Below them a wide committed stream track grows as the animation merges each frame in turn: frame N glows and its tokens drop into the stream, then frames N+1 and N+2 each glow, flash their blue overlap pills against the matching committed tail, and append only their teal new-tail pills. A green check badge marks the finished transcript, which holds before looping.">
+  <!--
+    stitch-merge: casting-call rolling-caption stitcher.
+    Google Meet redraws the caption box as text scrolls, so consecutive OCR'd
+    frames overlap heavily. The stitcher aligns each frame's tokens against the
+    committed stream's tail and appends only the new tail.
+
+    TIMELINE (8s loop):
+      glow frame N        0%    to  6.25%   (0.0s to 0.5s, soft outline pulse)
+      stream pill 1 drops 6.25% to 10.5%    ("the quick brown")
+      stream pill 2 drops 8%    to 12.5%    ("fox jumps over")
+      pause               12.5% to 16.25%   (about 0.3s)
+      glow frame N+1      16.25% to 22.5%
+      overlap flash 1     22.5% to 30%      (blue pulse on frame N+1 pill AND committed tail)
+      stream pill 3 drops 30%   to 34.5%    ("the lazy dog")
+      pause               36.25% to 40%
+      glow frame N+2      40%   to 46.25%
+      overlap flash 2     46.25% to 53.75%
+      stream pill 4 drops 53.75% to 58%     ("and naps.")
+      check badge pops    62.5% to 65.5%
+      finished frame HOLDS 65.5% to 100%    (about 2.8s linger)
+    Base attributes carry the completed end-state so the diagram reads frozen.
+  -->
+  <style>
+    .badge { transform-box: fill-box; transform-origin: center; }
+    .gN  { animation: smGlowN 8s linear infinite; }
+    .gN1 { animation: smGlowN1 8s linear infinite; }
+    .gN2 { animation: smGlowN2 8s linear infinite; }
+    .sp1 { animation: smPill1 8s linear infinite; }
+    .sp2 { animation: smPill2 8s linear infinite; }
+    .sp3 { animation: smPill3 8s linear infinite; }
+    .sp4 { animation: smPill4 8s linear infinite; }
+    .fl1 { animation: smFlash1 8s linear infinite; }
+    .fl2 { animation: smFlash2 8s linear infinite; }
+    .bdg { animation: smBadge 8s linear infinite; }
+    @keyframes smGlowN  { 0% { opacity: 0; } 1.5% { opacity: 0.9; } 3.25% { opacity: 0.3; } 5% { opacity: 0.85; } 6.25%, 100% { opacity: 0; } }
+    @keyframes smGlowN1 { 0%, 16.25% { opacity: 0; } 17.75% { opacity: 0.9; } 19.5% { opacity: 0.3; } 21.25% { opacity: 0.85; } 22.5%, 100% { opacity: 0; } }
+    @keyframes smGlowN2 { 0%, 40% { opacity: 0; } 41.5% { opacity: 0.9; } 43.25% { opacity: 0.3; } 45% { opacity: 0.85; } 46.25%, 100% { opacity: 0; } }
+    @keyframes smPill1 { 0%, 6.25% { opacity: 0; transform: translateY(-8px); } 10.5%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes smPill2 { 0%, 8% { opacity: 0; transform: translateY(-8px); } 12.5%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes smPill3 { 0%, 30% { opacity: 0; transform: translateY(-8px); } 34.5%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes smPill4 { 0%, 53.75% { opacity: 0; transform: translateY(-8px); } 58%, 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes smFlash1 { 0%, 22.5% { opacity: 0; } 24.5% { opacity: 0.85; } 26.5% { opacity: 0.15; } 28.5% { opacity: 0.85; } 30%, 100% { opacity: 0; } }
+    @keyframes smFlash2 { 0%, 46.25% { opacity: 0; } 48.25% { opacity: 0.85; } 50.25% { opacity: 0.15; } 52.25% { opacity: 0.85; } 53.75%, 100% { opacity: 0; } }
+    @keyframes smBadge { 0%, 62.5% { opacity: 0; transform: scale(0.5); } 65.5%, 100% { opacity: 1; transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) {
+      .gN, .gN1, .gN2, .sp1, .sp2, .sp3, .sp4, .fl1, .fl2, .bdg { animation: none; }
+      .sp1, .sp2, .sp3, .sp4, .bdg { opacity: 1; transform: none; }
+      .gN, .gN1, .gN2, .fl1, .fl2 { opacity: 0; }
+    }
+  </style>
+
+  <rect x="0" y="0" width="660" height="290" rx="10" fill="#ffffff"/>
+  <text x="16" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12.5" font-weight="700" fill="#3a4350">Rolling captions to one transcript</text>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <!-- frame labels -->
+    <text x="16" y="52" font-size="11.5" fill="#5b6573">frame N</text>
+    <text x="225" y="52" font-size="11.5" fill="#5b6573">frame N+1</text>
+    <text x="434" y="52" font-size="11.5" fill="#5b6573">frame N+2</text>
+
+    <!-- frame N -->
+    <rect x="16" y="58" width="190" height="92" rx="8" fill="#eef1f5" stroke="#9aa3b0" stroke-width="1"/>
+    <rect class="gN" x="16" y="58" width="190" height="92" rx="8" fill="none" stroke="#6f9ce8" stroke-width="3" opacity="0"/>
+    <rect x="28" y="70" width="96" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+    <text x="76" y="81.5" text-anchor="middle" font-size="10" fill="#0e7d70">the quick brown</text>
+    <rect x="28" y="96" width="90" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+    <text x="73" y="107.5" text-anchor="middle" font-size="10" fill="#0e7d70">fox jumps over</text>
+    <rect x="28" y="122" width="110" height="16" rx="8" fill="#f2f4f7" stroke="#cbd2dc" stroke-width="1" stroke-dasharray="3 2"/>
+    <text x="83" y="133.5" text-anchor="middle" font-size="10" font-style="italic" fill="#9aa3b0">(interim, dropped)</text>
+
+    <!-- frame N+1 -->
+    <rect x="225" y="58" width="190" height="92" rx="8" fill="#eef1f5" stroke="#9aa3b0" stroke-width="1"/>
+    <rect class="gN1" x="225" y="58" width="190" height="92" rx="8" fill="none" stroke="#6f9ce8" stroke-width="3" opacity="0"/>
+    <rect x="237" y="70" width="90" height="16" rx="8" fill="#e3edfc" stroke="#346DDB" stroke-width="1"/>
+    <text x="282" y="81.5" text-anchor="middle" font-size="10" fill="#1f5fc0">fox jumps over</text>
+    <rect class="fl1" x="237" y="70" width="90" height="16" rx="8" fill="#9ec2f5" opacity="0"/>
+    <rect x="237" y="96" width="80" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+    <text x="277" y="107.5" text-anchor="middle" font-size="10" fill="#0e7d70">the lazy dog</text>
+    <rect x="237" y="122" width="110" height="16" rx="8" fill="#f2f4f7" stroke="#cbd2dc" stroke-width="1" stroke-dasharray="3 2"/>
+    <text x="292" y="133.5" text-anchor="middle" font-size="10" font-style="italic" fill="#9aa3b0">(interim, dropped)</text>
+
+    <!-- frame N+2 -->
+    <rect x="434" y="58" width="190" height="92" rx="8" fill="#eef1f5" stroke="#9aa3b0" stroke-width="1"/>
+    <rect class="gN2" x="434" y="58" width="190" height="92" rx="8" fill="none" stroke="#6f9ce8" stroke-width="3" opacity="0"/>
+    <rect x="446" y="70" width="80" height="16" rx="8" fill="#e3edfc" stroke="#346DDB" stroke-width="1"/>
+    <text x="486" y="81.5" text-anchor="middle" font-size="10" fill="#1f5fc0">the lazy dog</text>
+    <rect class="fl2" x="446" y="70" width="80" height="16" rx="8" fill="#9ec2f5" opacity="0"/>
+    <rect x="446" y="96" width="64" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+    <text x="478" y="107.5" text-anchor="middle" font-size="10" fill="#0e7d70">and naps.</text>
+    <rect x="446" y="122" width="110" height="16" rx="8" fill="#f2f4f7" stroke="#cbd2dc" stroke-width="1" stroke-dasharray="3 2"/>
+    <text x="501" y="133.5" text-anchor="middle" font-size="10" font-style="italic" fill="#9aa3b0">(interim, dropped)</text>
+
+    <!-- legend -->
+    <rect x="16" y="163" width="14" height="11" rx="3" fill="#e3edfc" stroke="#346DDB" stroke-width="1"/>
+    <text x="36" y="172" font-size="10" fill="#5b6573">blue = overlap anchor</text>
+    <rect x="156" y="163" width="14" height="11" rx="3" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+    <text x="176" y="172" font-size="10" fill="#5b6573">teal = new tail</text>
+    <rect x="266" y="163" width="14" height="11" rx="3" fill="#f2f4f7" stroke="#cbd2dc" stroke-width="1" stroke-dasharray="3 2"/>
+    <text x="286" y="172" font-size="10" font-style="italic" fill="#5b6573">grey italic = interim line, dropped</text>
+
+    <!-- committed stream -->
+    <text x="16" y="200" font-size="11.5" fill="#5b6573">committed stream</text>
+    <text x="644" y="200" text-anchor="end" font-size="10.5" fill="#8a94a3">align on &#8805;4-token overlap</text>
+    <rect x="16" y="208" width="628" height="38" rx="8" fill="#f7f9fb" stroke="#dfe4ea" stroke-width="1"/>
+
+    <g class="sp1">
+      <rect x="28" y="219" width="96" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+      <text x="76" y="230.5" text-anchor="middle" font-size="10" fill="#0e7d70">the quick brown</text>
+    </g>
+    <g class="sp2">
+      <rect x="132" y="219" width="90" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+      <text x="177" y="230.5" text-anchor="middle" font-size="10" fill="#0e7d70">fox jumps over</text>
+    </g>
+    <rect class="fl1" x="132" y="219" width="90" height="16" rx="8" fill="#9ec2f5" opacity="0"/>
+    <g class="sp3">
+      <rect x="230" y="219" width="80" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+      <text x="270" y="230.5" text-anchor="middle" font-size="10" fill="#0e7d70">the lazy dog</text>
+    </g>
+    <rect class="fl2" x="230" y="219" width="80" height="16" rx="8" fill="#9ec2f5" opacity="0"/>
+    <g class="sp4">
+      <rect x="318" y="219" width="64" height="16" rx="8" fill="#e2f4f1" stroke="#18a394" stroke-width="1"/>
+      <text x="350" y="230.5" text-anchor="middle" font-size="10" fill="#0e7d70">and naps.</text>
+    </g>
+    <g class="badge bdg">
+      <circle cx="398" cy="227" r="6.5" fill="#1d9b54" stroke="#fff" stroke-width="1.3"/>
+      <polyline points="395,227 397,229.4 401,224.6" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <text x="16" y="272" font-size="11.5" fill="#5b6573">Each frame repeats most of the caption box; the stitcher matches the overlap and commits only the new tail.</text>
+  </g>
+</svg>
+  </div>
+  <figcaption>Each frame contributes only its new tail. The interim bottom line of every frame is held back until it stabilizes, which is why the stitcher never commits Meet's half-revised text.</figcaption>
+</figure>
+
+<p>Usage is a three-step recipe rather than a single alias for now. Extract the caption band as frames, then stitch:</p>
+<pre><code># 1. crop the caption band (find the region the same way as section 7) at 1.5 fps
+ffmpeg -i recording.mov -vf "fps=1.5,crop=W:H:X:Y" frames/f%05d.png
+
+# 2. optional but much faster: pre-OCR the frames in parallel
+ls frames/*.png | xargs -P 8 -I{} tesseract {} {} --psm 6 tsv 2>/dev/null
+
+# 3. stitch
+python3 -c "
+from casting_call.roster import load_roster
+from casting_call.stitch import stitch_frames
+text, stats = stitch_frames('frames', load_roster('speakers_roster.json'))
+print(text)"</code></pre>
+<div class="note">The stitched output is a different shape from the audio transcripts: <code>Name: text</code> blocks with no timestamps, because caption text carries no clock. Treat it as the record of the words, not a drop-in replacement for the timed transcript. Caption text is Meet's live ASR and reads rougher than Whisper.</div>
+
+<h2 id="affect">12. The affect layer: how it was said</h2>
+<p>A transcript flattens delivery. "That's valid" said flat and "that's valid" said warm are the same seven characters, and sometimes the difference is the whole point of re-reading a call. The affect layer measures delivery per utterance and writes it back as compact annotations.</p>
+<p><strong>Prosody (audio).</strong> <code>casting_call.prosody</code> takes one speaker's channel plus the timed transcript, cuts the channel into utterances, and extracts pitch median, pitch range, terminal pitch slope (is the utterance rising or falling at the end), energy, and pace via Praat. Pitch is tracked between 75 and 500 Hz; an utterance needs at least 8 voiced frames before pitch stats count; the terminal slope is fitted over the final 40% of voiced frames. Every number is then z-scored against that speaker's own baseline for the call.</p>
+
+<figure>
+  <div class="diagram">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 260" width="660" height="260" role="img" aria-label="Before and after comparison, two stacked rows, both speaking the same words: that's valid. Each row has a mini pitch chart with a dashed line marking the speaker's own baseline at the same height. Row one, polite: a near-flat slate trace hugs the baseline and its tag reads energy minus 1.0 sigma, flat. Row two, warm: an amber trace rises above the baseline with a rising terminal sweep ending in a green dot, tagged pitch plus 1.4 sigma rising, smile, nod. The traces draw left to right in sequence, each tag fades or pops in, then the completed frame holds and loops. Frozen, both traces and both tags are fully visible.">
+  <!--
+    prosody-baseline: within-speaker prosody baseline for casting-call.
+    Same words, opposite meaning; the tell is deviation from the speaker's
+    OWN baseline (z-score), not absolute pitch or energy values.
+
+    TIMING (4s loop):
+      0%    to 12.5%   row 1 trace draws left to right (0.5s)
+      12.5% to 17.5%   row 1 tag pill fades in
+      17.5% to 20%     pause (about 0.3s)
+      20%   to 32.5%   row 2 trace draws left to right (0.5s)
+      32.5% to 37.5%   row 2 tag pill pops in, endpoint dot and glow appear
+      37.5% to 100%    completed frame holds (about 2.5s), then loop
+    (Note: write "to", never a double hyphen, inside XML comments.)
+  -->
+  <style>
+    .trace { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .t1 { stroke-dasharray: 420; animation: pbTrace1 4s linear infinite; }
+    .t2 { stroke-dasharray: 420; animation: pbTrace2 4s linear infinite; }
+    .tag1 { animation: pbTag1 4s linear infinite; }
+    .tag2 { transform-box: fill-box; transform-origin: center; animation: pbTag2 4s linear infinite; }
+    .tagDot { animation: pbDot 4s linear infinite; }
+    .glow { animation: pbGlow 4s linear infinite; }
+    @keyframes pbTrace1 { 0% { stroke-dashoffset: 420; } 12.5%, 100% { stroke-dashoffset: 0; } }
+    @keyframes pbTrace2 { 0%, 20% { stroke-dashoffset: 420; } 32.5%, 100% { stroke-dashoffset: 0; } }
+    @keyframes pbTag1 { 0%, 12.5% { opacity: 0; } 17.5%, 100% { opacity: 1; } }
+    @keyframes pbTag2 { 0%, 32.5% { opacity: 0; transform: scale(0.92); } 36% { opacity: 1; transform: scale(1.05); } 37.5%, 100% { opacity: 1; transform: scale(1); } }
+    @keyframes pbDot { 0%, 32.5% { opacity: 0; } 36%, 100% { opacity: 1; } }
+    @keyframes pbGlow { 0%, 32.5% { opacity: 0; } 37.5%, 100% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .trace, .tag1, .tag2, .tagDot, .glow { animation: none; }
+      .trace { stroke-dashoffset: 0; }
+      .tag1, .tag2, .tagDot, .glow { opacity: 1; }
+      .tag2 { transform: scale(1); }
+    }
+  </style>
+
+  <rect x="0" y="0" width="660" height="260" rx="10" fill="#ffffff"/>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <text x="16" y="26" font-size="12.5" font-weight="700" fill="#3a4350">Same words, different delivery</text>
+
+    <!-- Row 1: polite -->
+    <text x="16" y="58" font-size="11.5" font-weight="600" fill="#5b6573">polite</text>
+    <rect x="16" y="69" width="92" height="24" rx="6" fill="#eef1f5" stroke="#d9dee6" stroke-width="1"/>
+    <text x="62" y="84.5" text-anchor="middle" font-size="10" fill="#3a4350">that's valid.</text>
+
+    <rect x="116" y="46" width="400" height="70" rx="6" fill="#f4f6f9" stroke="#e3e7ee" stroke-width="1"/>
+    <line x1="122" y1="81" x2="510" y2="81" stroke="#b7bfca" stroke-width="1" stroke-dasharray="5 4"/>
+    <text x="508" y="93" text-anchor="end" font-size="9" fill="#8a93a2">her baseline</text>
+    <polyline class="trace t1" stroke="#9aa3b0" points="124,82 156,81 188,82.5 220,80.5 252,82 284,81 316,82.5 348,80.5 380,82 412,81 444,82.3 476,80.8 508,81.6"/>
+
+    <g class="tag1">
+      <rect x="526" y="65" width="114" height="32" rx="16" fill="#eef1f5" stroke="#d9dee6" stroke-width="1"/>
+      <text x="583" y="78.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#9aa3b0">energy -1.0&#963;</text>
+      <text x="583" y="90.5" text-anchor="middle" font-size="9.5" fill="#9aa3b0">flat</text>
+    </g>
+
+    <!-- Row 2: warm -->
+    <text x="16" y="150" font-size="11.5" font-weight="600" fill="#5b6573">warm</text>
+    <rect x="16" y="161" width="92" height="24" rx="6" fill="#eef1f5" stroke="#d9dee6" stroke-width="1"/>
+    <text x="62" y="176.5" text-anchor="middle" font-size="10" fill="#3a4350">that's valid.</text>
+
+    <rect x="116" y="138" width="400" height="70" rx="6" fill="#f4f6f9" stroke="#e3e7ee" stroke-width="1"/>
+    <line x1="122" y1="173" x2="510" y2="173" stroke="#b7bfca" stroke-width="1" stroke-dasharray="5 4"/>
+    <text x="508" y="185" text-anchor="end" font-size="9" fill="#8a93a2">her baseline</text>
+    <polyline class="trace t2" stroke="#e8932a" points="124,173 156,172.5 188,169 220,170.5 252,165 284,166.5 316,160 348,161.5 380,156 412,154 444,152 476,148 508,144"/>
+    <g class="tagDot">
+      <circle cx="508" cy="144" r="4" fill="#1d9b54" stroke="#ffffff" stroke-width="1.3"/>
+    </g>
+
+    <rect class="glow" x="522" y="153" width="122" height="40" rx="20" fill="#1d9b54" fill-opacity="0.14"/>
+    <g class="tag2">
+      <rect x="526" y="157" width="114" height="32" rx="16" fill="#e4f5ea" stroke="#b9e2c8" stroke-width="1"/>
+      <text x="583" y="170.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#1d9b54">pitch +1.4&#963; rising</text>
+      <text x="583" y="182.5" text-anchor="middle" font-size="9.5" fill="#1d9b54">smile &#183; nod</text>
+    </g>
+
+    <!-- Footnote -->
+    <text x="16" y="234" font-size="11" fill="#5b6573">Same words. The z-score against her own baseline is what separates them.</text>
+  </g>
+</svg>
+  </div>
+  <figcaption>The chart is the argument for z-scores: neither trace means anything on an absolute scale, but against her own baseline one of them is clearly a different sentence.</figcaption>
+</figure>
+
+<p><strong>Faces (video).</strong> When a speaker's audio is missing but their video tile is on screen, <code>casting_call.faces</code> recovers the visual half of delivery: smile intensity from MediaPipe blendshapes and nod detection from head-pitch oscillation (3 or more direction reversals of at least 1.5 degrees within a 2-second window). Same rule as prosody: smiles are z-scored against that person's own baseline, because some people smile at rest and the signal is deviation, not the absolute score.</p>
+<p>Reading the annotations: a line like <code>{pitch +1.4σ rising · energy +0.9σ}</code> means unusually high and rising pitch with elevated energy, for that speaker. On a short affirmation that is the acoustic signature of enthusiastic agreement rather than polite acknowledgment.</p>
+<div class="warn">This is a heatmap, not a mind reader. Single-utterance affect inference is noisy, and anything past arousal and animation gets speculative fast. Use it to find which moments deserve a re-listen, then re-listen. Short backchannels ("yeah", "mm-hmm") currently dominate the extreme z-scores because they are tiny samples; weight longer utterances more heavily when you scan the output.</div>
+
+<h2 id="data">13. Where the data comes from</h2>
 <p>It is worth being precise about which file supplies what, because the words and the names come from two completely separate sources.</p>
 <p>The <strong>transcript text</strong> comes only from the audio, through Whisper. The left and right channels are split, transcribed separately, and merged by timestamp. The on-screen captions are never used for the words themselves, because caption text is too low-quality. The captions supply only the speaker names.</p>
 <p>The <strong>speaker names</strong> come from the video: <code>rips</code> samples frames at 2 frames per second, crops the caption region, OCRs it with tesseract, and fuzzy-matches the leading name token against your roster. A match above the threshold (0.72 by default) becomes that person's canonical name; <code>You</code> maps to your <code>self</code> name; anything below threshold becomes an unknown for review.</p>
@@ -313,7 +739,7 @@ riprec ~/calls/2026-06-04   # extract audio + compress video in one pass</code><
 </table>
 <div class="note">These are defined in code, not exposed as command-line flags. To change them you edit <code>config.py</code>. The only knobs on the command line are <code>--region</code>, <code>--roster</code>, <code>--out</code>, <code>--transcript</code>, and <code>--callers</code>.</div>
 
-<h2 id="faq">12. Good to know</h2>
+<h2 id="faq">14. Good to know</h2>
 <dl class="defn">
   <dt>Does it send my calls or names anywhere?</dt>
   <dd>No. Everything runs locally: ffmpeg, Whisper, and tesseract all run on your machine, and there is no account or network upload. Your roster of real names is gitignored and stays on disk.</dd>
@@ -329,6 +755,12 @@ riprec ~/calls/2026-06-04   # extract audio + compress video in one pass</code><
   <dd>It is the share of originally-<code>Caller</code> lines that ended up with a real name. "82%" means 18% of caller lines stayed <code>Caller</code> (captions off, window covered, below-threshold names you skipped, or genuine silence). It is a quick read on how well attribution went.</dd>
   <dt>Do I have to use the rip aliases?</dt>
   <dd>No. They are personal shell shortcuts defined outside this repo. You can call the scripts directly, for example <code>bash bin/extract_speakers.sh recording.mov --region ...</code> from the repo root.</dd>
+  <dt>How do I know a recording is good before the call ends?</dt>
+  <dd>Run <code>callcheck --live</code> right after joining: it captures 6 seconds from the recording device and judges each channel against the &minus;55&nbsp;dB floor. Make sure both sides actually say something during the capture, or a real channel reads dead. It judges on mean volume, not peaks, because a dead channel can still spike from crosstalk.</dd>
+  <dt>One channel of my recording is silent. Is the call lost?</dt>
+  <dd>The words are recoverable if captions were on: see the caption stitching section. Delivery is partially recoverable too: your own channel still supports prosody, and the other person's video tile supports the smile/nod track. What is gone for good is their voice.</dd>
+  <dt>Are the affect numbers "true"?</dt>
+  <dd>They are honest measurements of pitch, energy, and face geometry, but the leap from measurement to feeling is yours to make. The layer deliberately reports deviations from a person's own baseline and stops there. Treat every flagged moment as a bookmark for re-listening, not a verdict.</dd>
 </dl>
 
 <hr class="soft">

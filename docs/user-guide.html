@@ -310,6 +310,8 @@ curl -o ~/whisper-models/ggml-large-v3.bin -L \
     <tr><td><code>ript</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Batch-transcribe MP3s already extracted across dated subfolders. A bulk variant of <code>ripa</code>'s transcribe pass.</td><td><code>transcripts/*.txt</code></td></tr>
     <tr><td><code>ripv</code></td><td><code>convert_video.sh</code></td><td>Compress each <code>.mov</code> to a smaller 1080p MP4.</td><td><code>converted_video/*.mp4</code></td></tr>
     <tr><td><code>riprec</code></td><td><code>convert_recordings.sh</code></td><td>Convenience wrapper: extract audio and compress video in one pass.</td><td>audio + <code>converted_video/*.mp4</code></td></tr>
+    <tr><td><code>ripcap</code></td><td><code>stitch_captions.sh</code></td><td>Recover a full attributed transcript from the on-screen captions when a channel's audio is missing. Extracts the caption band, OCRs it in parallel, stitches.</td><td><code>transcripts/*-stitched.txt</code></td></tr>
+    <tr><td><code>ripvibe</code></td><td><code>analyze_affect.sh</code></td><td>Measure how one speaker talked: prosody z-scores from their audio channel, or smile/nod tracking from their video tile with <code>--faces</code>.</td><td><code>*-prosody.txt</code> / <code>*-faces.txt</code></td></tr>
     <tr><td><code>callcheck</code></td><td><code>callcheck.sh</code></td><td>Verify a recording (or a 6-second live capture) actually has BOTH sides of the call. A channel whose mean volume sits below &minus;55&nbsp;dB is judged dead. Run it at the start of every important call.</td><td>verdict on stdout; exit 0 both live, 1 a channel is dead, 2 usage error</td></tr>
   </tbody>
 </table>
@@ -611,19 +613,10 @@ riprec ~/calls/2026-06-04   # extract audio + compress video in one pass</code><
   <figcaption>Each frame contributes only its new tail. The interim bottom line of every frame is held back until it stabilizes, which is why the stitcher never commits Meet's half-revised text.</figcaption>
 </figure>
 
-<p>Usage is a three-step recipe rather than a single alias for now. Extract the caption band as frames, then stitch:</p>
-<pre><code># 1. crop the caption band (find the region the same way as section 7) at 1.5 fps
-ffmpeg -i recording.mov -vf "fps=1.5,crop=W:H:X:Y" frames/f%05d.png
-
-# 2. optional but much faster: pre-OCR the frames in parallel
-ls frames/*.png | xargs -P 8 -I{} tesseract {} {} --psm 6 tsv 2>/dev/null
-
-# 3. stitch
-python3 -c "
-from casting_call.roster import load_roster
-from casting_call.stitch import stitch_frames
-text, stats = stitch_frames('frames', load_roster('speakers_roster.json'))
-print(text)"</code></pre>
+<p>Usage is one command. Find the caption region the same way as section 7, then:</p>
+<pre><code>ripcap recording.mov --region 1510,1100,1060,420
+# writes transcripts/recording-stitched.txt
+# knobs: --fps 1.5 (sampling rate), --jobs 8 (parallel OCR), --out DIR</code></pre>
 <div class="note">The stitched output is a different shape from the audio transcripts: <code>Name: text</code> blocks with no timestamps, because caption text carries no clock. Treat it as the record of the words, not a drop-in replacement for the timed transcript. Caption text is Meet's live ASR and reads rougher than Whisper.</div>
 
 <h2 id="affect">12. The affect layer: how it was said</h2>
@@ -718,6 +711,12 @@ print(text)"</code></pre>
   <figcaption>The chart is the argument for z-scores: neither trace means anything on an absolute scale, but against her own baseline one of them is clearly a different sentence.</figcaption>
 </figure>
 
+<p>Running it is one command per speaker. The channel picks itself from the label (<code>You</code> is your mic on the left, everyone else is the call on the right):</p>
+<pre><code>ripvibe recording.mov --transcript transcripts/recording.txt --label Caller
+# writes transcripts/recording-caller-prosody.txt and prints the biggest deviations
+
+ripvibe recording.mov --faces --tile 1507,195,1055,922
+# writes recording-faces.txt: the warmest 30-second windows, plus nods</code></pre>
 <p><strong>Faces (video).</strong> When a speaker's audio is missing but their video tile is on screen, <code>casting_call.faces</code> recovers the visual half of delivery: smile intensity from MediaPipe blendshapes and nod detection from head-pitch oscillation (3 or more direction reversals of at least 1.5 degrees within a 2-second window). Same rule as prosody: smiles are z-scored against that person's own baseline, because some people smile at rest and the signal is deviation, not the absolute score.</p>
 <p>Reading the annotations: a line like <code>{pitch +1.4σ rising · energy +0.9σ}</code> means unusually high and rising pitch with elevated energy, for that speaker. On a short affirmation that is the acoustic signature of enthusiastic agreement rather than polite acknowledgment.</p>
 <div class="warn">This is a heatmap, not a mind reader. Single-utterance affect inference is noisy, and anything past arousal and animation gets speculative fast. Use it to find which moments deserve a re-listen, then re-listen. Short backchannels ("yeah", "mm-hmm") currently dominate the extreme z-scores because they are tiny samples; weight longer utterances more heavily when you scan the output.</div>

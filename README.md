@@ -14,6 +14,9 @@ caption labels to attribute the otherwise-undifferentiated "Caller" channel to n
 - `convert_video.sh` (`ripv`) — compress .mov to mp4
 - `convert_recordings.sh` (`riprec`) — extract audio + convert video
 - `extract_speakers.sh` (`rips`) — build the speaker timeline (speakers.json) from captions
+- `stitch_captions.sh` (`ripcap`) — recover a full transcript from on-screen captions
+- `analyze_affect.sh` (`ripvibe`) — prosody or smile/nod analysis of one speaker
+- `callcheck.sh` (`callcheck`) — verify a recording captured BOTH sides
 
 ## Speaker layer (casting_call/)
 Python package: sample frames → locate caption band → OCR + roster-match → timeline →

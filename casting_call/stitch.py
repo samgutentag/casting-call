@@ -13,7 +13,9 @@ come from the roster instead of a hardcoded map.
 import os
 import re
 import subprocess
+import sys
 from difflib import SequenceMatcher
+from pathlib import Path
 
 from .roster import match_name
 
@@ -228,3 +230,99 @@ def stitch_frames(frames_dir, roster, fixups=()):
     stats = {'frames': len(files), 'tokens': len(committed),
              'turns': len(merged)}
     return text, stats
+
+
+# --- CLI ---------------------------------------------------------------
+
+def stitched_output_path(mov_path, out_dir=None):
+    p = Path(mov_path)
+    base = Path(out_dir) if out_dir else p.parent / 'transcripts'
+    return base / f'{p.stem}-stitched.txt'
+
+
+def extract_band_frames(mov_path, out_dir, region, fps):
+    """ffmpeg the caption band straight to cropped PNGs (crop in the filter,
+    so we never write full-resolution frames to disk)."""
+    x, y, w, h = region
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for existing in out.glob('band_*.png'):
+        existing.unlink()
+    for existing in out.glob('band_*.tsv'):
+        existing.unlink()
+    subprocess.run(
+        ['ffmpeg', '-loglevel', 'error', '-i', str(mov_path),
+         '-vf', f'fps={fps},crop={w}:{h}:{x}:{y}',
+         str(out / 'band_%06d.png'), '-y'],
+        check=True,
+    )
+    return sorted(out.glob('band_*.png'))
+
+
+def ocr_frames_parallel(frames, jobs=8):
+    """Pre-generate the .tsv caches tesseract-per-frame, jobs at a time.
+    stitch_frames() picks the caches up instead of shelling out serially."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(path):
+        base = os.path.splitext(str(path))[0]
+        subprocess.run(['tesseract', str(path), base, '--psm', '6', 'tsv'],
+                       capture_output=True)
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        list(pool.map(one, frames))
+
+
+def main(argv=None):
+    import argparse
+
+    from .roster import load_roster
+
+    parser = argparse.ArgumentParser(
+        description='casting-call caption stitcher: captions become the transcript',
+        epilog='User guide: docs/user-guide.html (open in a browser)',
+    )
+    parser.add_argument('mov', help='the recording (or a directory of pre-cropped band frames)')
+    parser.add_argument('--region', help='x,y,w,h caption strip crop (full-frame px); '
+                                         'required unless mov is a frames directory')
+    parser.add_argument('--roster',
+                        default=str(Path(__file__).parent.parent / 'speakers_roster.json'))
+    parser.add_argument('--out', help='output dir (default: transcripts/ next to the recording)')
+    parser.add_argument('--fps', type=float, default=1.5,
+                        help='caption sampling rate (default 1.5; captions scroll slowly)')
+    parser.add_argument('--jobs', type=int, default=8, help='parallel OCR workers')
+    args = parser.parse_args(argv)
+
+    src = Path(args.mov)
+    if src.is_dir():
+        frames_dir = src
+        frames = sorted(list(src.glob('*.png')))
+    else:
+        if not args.region:
+            print('error: --region x,y,w,h required when input is a recording',
+                  file=sys.stderr)
+            return 2
+        region = tuple(int(v) for v in args.region.split(','))
+        frames_dir = (Path(args.out) if args.out else src.parent) / 'stitch_frames'
+        print(f'extracting caption band at {args.fps} fps...')
+        frames = extract_band_frames(src, frames_dir, region, args.fps)
+    if not frames:
+        print(f'error: no frames found in {frames_dir}', file=sys.stderr)
+        return 1
+
+    print(f'OCR over {len(frames)} frames ({args.jobs} workers)...')
+    ocr_frames_parallel(frames, args.jobs)
+
+    roster = load_roster(args.roster)
+    text, stats = stitch_frames(str(frames_dir), roster)
+
+    out_path = stitched_output_path(src, args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text + '\n')
+    print(f"wrote {out_path} ({stats['frames']} frames, {stats['tokens']} tokens, "
+          f"{stats['turns']} turns)")
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

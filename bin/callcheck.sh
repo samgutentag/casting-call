@@ -4,6 +4,9 @@
 #
 # Usage:
 #   callcheck <file>                  analyze an existing recording (mp3/mov/wav/m4a/...)
+#                                     (files over 1 GiB auto-switch to a sampled scan)
+#   callcheck --fast <file>           force the sampled scan (5 windows x 12s)
+#   callcheck --full <file>           force a full-file scan regardless of size
 #   callcheck --live [-d DEV] [-t N]  capture N sec (default 6) from input DEV, then analyze
 #   callcheck --devices               list avfoundation audio input devices
 #
@@ -47,12 +50,48 @@ chan_stats() {
     | awk '/mean_volume/{m=$5} /max_volume/{x=$5} END{print m, x}'
 }
 
+# Sampled variant for big files: volumedetect over five 12s windows spread
+# across the file instead of a full decode (a 4K hour-long .mov takes minutes
+# to scan whole). Reports the BEST window mean per channel: a dead channel is
+# dead in every window, while a live one only needs speech in one of them.
+FAST_WINDOWS=(0.10 0.30 0.50 0.70 0.90)
+FAST_WIN_SECS=12
+FAST_SIZE_BYTES=$((1024 * 1024 * 1024))   # auto-engage above 1 GiB
+
+file_duration() {
+  ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | cut -d. -f1
+}
+
+chan_stats_fast() {
+  local f="$1" pan="$2" dur best_mean="" overall_max="" off mean max
+  dur=$(file_duration "$f")
+  [ -z "$dur" ] || [ "$dur" -lt $((FAST_WIN_SECS * 2)) ] && { chan_stats "$f" "$pan"; return; }
+  for frac in "${FAST_WINDOWS[@]}"; do
+    off=$(awk "BEGIN{printf \"%d\", $dur * $frac}")
+    read -r mean max < <(ffmpeg -nostdin -hide_banner -ss "$off" -t "$FAST_WIN_SECS" \
+        -i "$f" -af "pan=mono|$pan,volumedetect" -f null /dev/null 2>&1 \
+      | awk '/mean_volume/{m=$5} /max_volume/{x=$5} END{print m, x}')
+    [ -z "${mean:-}" ] || [[ "$mean" == *inf* ]] && continue
+    if [ -z "$best_mean" ] || awk "BEGIN{exit !($mean > $best_mean)}"; then best_mean="$mean"; fi
+    if [ -z "$overall_max" ] || awk "BEGIN{exit !($max > $overall_max)}"; then overall_max="$max"; fi
+  done
+  echo "${best_mean:--91.0} ${overall_max:--91.0}"
+}
+
 analyze() {
-  local f="$1" rc=0 side pan who mean max verdict
-  echo "Checking: $f"
+  local f="$1" rc=0 side pan who mean max verdict mode="full" size
+  size=$(stat -f%z "$f" 2>/dev/null || echo 0)
+  if [ "${FORCE_FULL:-0}" != "1" ] && { [ "${FORCE_FAST:-0}" = "1" ] || [ "$size" -gt "$FAST_SIZE_BYTES" ]; }; then
+    mode="sampled"
+  fi
+  echo "Checking: $f ($mode scan)"
   for entry in "L:c0=c0:you " "R:c0=c1:them"; do
     side="${entry%%:*}"; pan="${entry#*:}"; who="${pan#*:}"; pan="${pan%%:*}"
-    read -r mean max < <(chan_stats "$f" "$pan")
+    if [ "$mode" = "sampled" ]; then
+      read -r mean max < <(chan_stats_fast "$f" "$pan")
+    else
+      read -r mean max < <(chan_stats "$f" "$pan")
+    fi
     if [ -z "${max:-}" ]; then echo "  $side: (no second channel / mono file)"; continue; fi
     if [[ -z "$mean" || "$mean" == *inf* ]]; then
       verdict="DEAD"; rc=1
@@ -84,6 +123,12 @@ case "${1:-}" in
       || die "capture failed - is device [$idx] a 2-channel input?"
     analyze "$tmp"; rc=$?
     rm -f "$tmp"; exit $rc ;;
+  --fast)
+    shift; [ -f "${1:-}" ] || die "usage: callcheck --fast <file>"
+    FORCE_FAST=1 analyze "$1"; exit $? ;;
+  --full)
+    shift; [ -f "${1:-}" ] || die "usage: callcheck --full <file>"
+    FORCE_FULL=1 analyze "$1"; exit $? ;;
   *)
     [ -f "$1" ] || die "no such file: $1"
     analyze "$1"; exit $? ;;

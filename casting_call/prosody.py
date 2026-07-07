@@ -29,6 +29,8 @@ PITCH_FLOOR = 75.0    # Hz — standard Praat range, fine for adult speech
 PITCH_CEIL = 500.0
 MIN_VOICED_FRAMES = 8  # below this, pitch stats are noise; features become None
 TERMINAL_PORTION = 0.4  # fit the slope over the final 40% of voiced frames
+BASELINE_MIN_DUR = 1.5  # baseline stats come from utterances at least this long;
+                        # backchannels ("yeah") are tiny samples that skew the mean
 
 
 @dataclass
@@ -119,10 +121,19 @@ def _extract(snd, utt):
         if len(tail) >= 3:
             feats.f0_slope = _linfit_slope(tail)
 
+    # Energy over the voiced stretch only. The utterance window is bounded by
+    # the NEXT transcript line, so it often trails off into silence; averaging
+    # over that silence reads a normal goodbye as an energy collapse.
     intensity = part.to_intensity(minimum_pitch=PITCH_FLOOR)
-    vals = [intensity.get_value(intensity.xs()[i])
-            for i in range(len(intensity.xs()))]
-    vals = [v for v in vals if v and not math.isnan(v)]
+    lo = pts[0][0] if pts else None
+    hi = pts[-1][0] if pts else None
+    vals = []
+    for t in intensity.xs():
+        if lo is not None and not (lo <= t <= hi):
+            continue
+        v = intensity.get_value(t)
+        if v and not math.isnan(v):
+            vals.append(v)
     if vals:
         feats.energy = sum(vals) / len(vals)
 
@@ -153,10 +164,18 @@ def analyze(wav_path, utterances):
     snd = parselmouth.Sound(str(wav_path))
     feats = [_extract(snd, u) for u in utterances]
 
+    # Baseline from substantive utterances only: short backchannels are tiny,
+    # noisy samples that drag the mean around. They still get SCORED against
+    # the baseline; they just don't define it. Fall back to everything when a
+    # call is nothing but backchannel.
+    substantive = [f for u, f in zip(utterances, feats)
+                   if (u.t_end - u.t_start) >= BASELINE_MIN_DUR]
     keys = ['f0_med', 'f0_range', 'f0_slope', 'energy', 'rate']
     stats = {}
     for k in keys:
-        vals = [getattr(f, k) for f in feats if getattr(f, k) is not None]
+        vals = [getattr(f, k) for f in substantive if getattr(f, k) is not None]
+        if len(vals) < 3:
+            vals = [getattr(f, k) for f in feats if getattr(f, k) is not None]
         if len(vals) >= 3:
             mean = sum(vals) / len(vals)
             sd = statistics.pstdev(vals)

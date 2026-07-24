@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>casting-call: New-Machine Setup, End to End</title>
+<style>
+  /* ===== THEME CHROME — DO NOT EDIT (keep identical across all docs) ===== */
+  :root {
+    --bg: #fff;
+    --text: #1a1a1a;
+    --heading: #111;
+    --muted: #555;
+    --muted2: #444;
+    --faint: #666;
+    --rule: #ddd;
+    --dot: #e2e2e2;
+    --code-bg: #f2f2f2;
+    --setup-bg: #f6f6f4;
+    --setup-border: #e0e0dc;
+    --watch-bg: #fbf7ec;
+    --watch-border: #b58900;
+    --btn-bg: #f0f0ee;
+    --btn-border: #ccc;
+    --accent: #c9a227;
+  }
+  html[data-theme="dark"] {
+    --bg: #17191d;
+    --text: #cfd2d6;
+    --heading: #f1f2f4;
+    --muted: #9aa0a6;
+    --muted2: #b3b8bd;
+    --faint: #888e94;
+    --rule: #34383e;
+    --dot: #2b2f34;
+    --code-bg: #262a30;
+    --setup-bg: #1e2126;
+    --setup-border: #34383e;
+    --watch-bg: #241f14;
+    --watch-border: #c9a227;
+    --btn-bg: #23262b;
+    --btn-border: #3a3f45;
+  }
+  #theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #theme-toggle:hover { border-color: var(--faint); }
+  /* ===== END THEME CHROME ===== */
+
+  /* ===== BASE DOCUMENT STYLE (Sam's standing conventions) ===== */
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 46rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+    background: var(--bg);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  h1, h2, h3 {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height: 1.25;
+    color: var(--heading);
+  }
+  h1 { font-size: 1.7rem; margin: 0 0 0.25rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule);
+    page-break-after: avoid;
+  }
+  h3 { font-size: 1.02rem; margin: 1.5rem 0 0.4rem; }
+  p, li { color: var(--text); }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); }
+  code {
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1.1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 3px solid var(--watch-border);
+    background: var(--watch-bg);
+    margin: 0.8rem 0;
+    padding: 0.7rem 0.9rem;
+    page-break-inside: avoid;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--rule); padding: 0.45rem 0.7rem; text-align: left; font-size: 0.95rem; }
+  th { font-family: system-ui, sans-serif; }
+  .meta { margin-top: 2.5rem; color: var(--faint); font-size: 0.85rem; font-family: system-ui, sans-serif; }
+  /* ===== END BASE ===== */
+
+  /* ===== PRINT: force clean light, hide the toggle ===== */
+  @media print {
+    :root { --bg:#fff; --text:#1a1a1a; --heading:#111; --setup-bg:#f6f6f4; --watch-bg:#fbf7ec; --code-bg:#f2f2f2; }
+    body { margin: 0; font-size: 12pt; }
+    blockquote, pre { background: none; }
+    #theme-toggle { display: none; }
+  }
+
+  /* ===== Document-specific styles ===== */
+  .tag { display: inline-block; font-family: system-ui, sans-serif; font-size: 0.7rem;
+         font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+         padding: 0.1rem 0.45rem; border-radius: 4px; vertical-align: middle; margin-left: 0.4rem; }
+  .tag.cli { background: var(--code-bg); color: var(--muted2); border: 1px solid var(--rule); }
+  .tag.gui { background: var(--watch-bg); color: var(--watch-border); border: 1px solid var(--watch-border); }
+  ol li { margin: 0.35rem 0; }
+</style>
+</head>
+<body>
+
+<button id="theme-toggle" type="button" aria-label="Toggle dark mode">Light mode</button>
+
+<!-- ===== CONTENT START ===== -->
+<h1>casting-call: New-Machine Setup, End to End</h1>
+
+<p>Everything it takes to go from a fresh Mac to a working call-recording rig: install the tools,
+record a screen call as three separate audio tracks (you, the far side, and a marker track), and
+turn it into a transcript with your flagged moments dropped in at the right spot. Follow it top to
+bottom the first time.</p>
+
+<p>Sections are tagged <span class="tag cli">terminal</span> when they are copy-paste commands
+(safe to hand to an agent) or <span class="tag gui">in the app</span> when they are clicks in OBS
+or Stream Deck that only a human can do. The flow the whole thing produces is in
+<code>docs/pipeline-flow.html</code> if you want the picture first.</p>
+
+<h2>What you end up with</h2>
+
+<p>OBS records your screen plus three audio tracks into one <code>.mkv</code>. Track 1 is your mic,
+Track 2 is the far side (Chrome, where Meet runs), and Track 3 is silent except for the short "mark
+flag" / "mark action" clips a Stream Deck button fires. After the call, one command splits the
+tracks, transcribes them, cleans up the junk Whisper invents on silence, and folds your markers in
+as <code>[MARKER]</code> lines. If the far side ever drops out, the captions on screen are the backup.</p>
+
+<h2>Part 1: The command line <span class="tag cli">terminal</span></h2>
+
+<p>This whole part is safe to run start to finish. It installs the tools, pulls the repo, and
+regenerates the marker clips locally (the <code>.wav</code> files are gitignored, so they do not
+come down with the clone).</p>
+
+<pre><code># Homebrew, if this machine does not have it yet
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Tools: ffmpeg + whisper for audio, tesseract for the caption fallback, the apps
+brew install ffmpeg whisper-cpp tesseract
+brew install --cask obs elgato-stream-deck
+
+# Python deps (Homebrew's python3; --break-system-packages is required on it)
+pip3 install --break-system-packages pillow numpy pytesseract pytest
+
+# Whisper model, ~3 GB, one time
+mkdir -p ~/whisper-models
+curl -o ~/whisper-models/ggml-large-v3.bin -L \
+  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'
+
+# The repo
+git clone https://github.com/samgutentag/casting-call.git ~/Developer/casting-call
+cd ~/Developer/casting-call
+
+# Your roster (real names stay local; this file is gitignored)
+cp speakers_roster.example.json speakers_roster.json
+# then edit speakers_roster.json: set "self" to your name, list the people you call
+
+# Marker clips (regenerated here; not committed)
+mkdir -p obs/marker-clips
+for p in flag important action question quote; do
+  say -o /tmp/_m.aiff "mark $p"
+  ffmpeg -loglevel error -i /tmp/_m.aiff -ar 16000 -ac 1 -c:a pcm_s16le "obs/marker-clips/mark-$p.wav" -y
+done
+rm -f /tmp/_m.aiff
+
+# Confirm the toolchain is sane
+python3 -m pytest -q</code></pre>
+
+<p>If the tests pass, the software side is done. The clips now live in
+<code>~/Developer/casting-call/obs/marker-clips/</code>, which you will point OBS at in Part 3.</p>
+
+<blockquote>
+If <code>python3</code> offers to install "command line developer tools," let it, then rerun the
+last two commands. The scripts and Whisper only need what you just installed.
+</blockquote>
+
+<h2>Part 2: OBS, recording three tracks <span class="tag gui">in the app</span></h2>
+
+<p>OBS records MKV on purpose. If a recording ever crashes, an MKV is still readable where an MP4
+would be corrupt. You never remux it; the pipeline reads the MKV directly.</p>
+
+<ol>
+<li>Open OBS. Skip or click through the auto-config wizard.</li>
+<li><strong>Settings, Output.</strong> Set <strong>Output Mode</strong> to <strong>Advanced</strong>.
+On the <strong>Recording</strong> tab set <strong>Recording Format</strong> to
+<strong>Matroska Video (.mkv)</strong>, and under <strong>Audio Track</strong> check
+<strong>1, 2, and 3</strong>.</li>
+<li><strong>Sources.</strong> Add these to your scene:
+  <ol>
+  <li><strong>Display Capture</strong> (or Window Capture) for the screen. This is the video.</li>
+  <li><strong>Audio Input Capture</strong> pointed at your mic (the Elgato Wave). This is you.</li>
+  <li><strong>Application Audio Capture</strong> targeting <strong>Google Chrome</strong>, not the
+  Meet PWA. Chrome routes call audio through one process that captures reliably; the PWA often
+  records silent.</li>
+  </ol>
+</li>
+<li><strong>Assign tracks.</strong> Click the gear in the Audio Mixer, choose
+<strong>Advanced Audio Properties</strong>. For each source, use the <strong>Tracks</strong>
+checkboxes on the right:
+  <ul>
+  <li>Mic (you): Track <strong>1</strong> only.</li>
+  <li>Chrome (far side): Track <strong>2</strong> only.</li>
+  </ul>
+</li>
+</ol>
+
+<blockquote>
+Do not switch your Mac's audio devices to route the call. That was the old rig, and it dropped the
+mic to Meet mid-call. OBS only reads audio, so Meet keeps your real mic and headphones. Leave them
+alone.
+</blockquote>
+
+<h2>Part 3: The marker track <span class="tag gui">in the app</span></h2>
+
+<p>This is the piece that makes markers work without any syncing. Five clips, each on its own
+media source, all routed to Track 3, none of them ever heard by anyone live.</p>
+
+<ol>
+<li>Add five <strong>Media Source</strong> items to the scene, one per clip in
+<code>obs/marker-clips/</code> (<code>mark-flag.wav</code> through <code>mark-quote.wav</code>). In
+each media source, <strong>uncheck Loop</strong> and <strong>check "Restart playback when source
+becomes active."</strong></li>
+<li>In <strong>Advanced Audio Properties</strong>, for all five marker sources:
+  <ul>
+  <li>Tracks: <strong>3 only</strong> (uncheck 1 and 2 so markers never touch the voice tracks).</li>
+  <li>Audio Monitoring: <strong>Monitor Off</strong>. This is what keeps the clip out of your
+  headphones and, more importantly, out of anything Meet can pick up. It still records to Track 3.</li>
+  </ul>
+</li>
+</ol>
+
+<blockquote>
+<strong>Why nobody hears it:</strong> an OBS media source plays inside OBS. With Monitor Off, OBS
+records it to Track 3 but never sends it to an output device, and OBS never feeds audio back into
+your mic or Meet. So the marker is silent to you and to the caller, and still lands in the file.
+</blockquote>
+
+<h2>Part 4: Stream Deck buttons <span class="tag gui">in the app</span></h2>
+
+<ol>
+<li>Open the Stream Deck app and install the official <strong>OBS Studio</strong> plugin from its
+Marketplace. In OBS, enable <strong>Tools, WebSocket Server Settings, Enable WebSocket server</strong>
+so Stream Deck can talk to it.</li>
+<li><strong>Start / Stop.</strong> Drag the OBS <strong>Start Recording</strong> action onto a key,
+and <strong>Stop Recording</strong> onto another.</li>
+<li><strong>Five marker keys.</strong> Use the OBS plugin's <strong>Media Source Control</strong>
+action (search "media" in the actions list), one per key. Set each key's <strong>Media Source</strong>
+to the matching source (<code>Mark Flag</code>, <code>Mark Important</code>, <code>Mark Action</code>,
+<code>Mark Question</code>, <code>Mark Quote</code>) and its action to <strong>Restart</strong>, so
+every press plays the clip from the top. This is the action that works; "Source Visibility" does not
+trigger playback, so do not use it here.</li>
+</ol>
+
+<blockquote>
+<strong>The one gotcha that will silently eat your markers:</strong> the marker sources live on
+Track 3, so the recording output has to actually record Track 3. Confirm Settings, Output,
+Recording has Audio Tracks 1, 2, <em>and</em> 3 checked. If Track 3 is off, the buttons fire, the
+clips play, and none of it ends up in the file. Sanity check a test recording with
+<code>ffprobe recording.mkv</code> and count three audio streams.
+</blockquote>
+
+<h2>Part 5: Prove it works before a real call <span class="tag cli">terminal</span> + <span class="tag gui">in the app</span></h2>
+
+<ol>
+<li>In OBS, press <strong>Start</strong>, talk for a few seconds, press a couple of marker keys,
+then press <strong>Stop</strong>. Move the resulting <code>.mkv</code> into a folder, say
+<code>~/calls/test/</code>.</li>
+<li>Confirm the file really has three audio tracks:
+<pre><code>ffprobe -v error -show_entries stream=index,codec_type -of csv ~/calls/test/*.mkv
+# expect one 'video' line and three 'audio' lines</code></pre>
+</li>
+<li>Run the pipeline and read the result:
+<pre><code>cd ~/Developer/casting-call
+bash bin/extract_audio_stereo.sh ~/calls/test
+cat ~/calls/test/transcripts/*.txt</code></pre>
+You should see <code>[You]</code> and <code>[Caller]</code> lines with <code>[MARKER]</code> lines
+sitting inline wherever you pressed a key.</li>
+</ol>
+
+<p>If the markers land in the right place and nobody heard them during the test, the rig is done.</p>
+
+<h2>Part 6: The daily loop</h2>
+
+<ol>
+<li>Start recording in OBS (or via the Stream Deck key). Tap the marker keys during the call
+whenever something matters.</li>
+<li>Stop. Drop the <code>.mkv</code> in a folder.</li>
+<li><code>bash bin/extract_audio_stereo.sh &lt;folder&gt;</code>. That is the transcript, markers and all,
+ready to hand to an LLM.</li>
+<li>Optional, only when you want to watch it back:
+<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code> with you on the
+left channel and the caller on the right.</li>
+<li>Optional, to put real names on the far-side lines:
+<code>bash bin/extract_speakers.sh &lt;recording&gt; --region x,y,w,h --transcript &lt;transcript&gt;</code>.</li>
+</ol>
+
+<h2>Part 7: When the far side drops out</h2>
+
+<p>Chrome's audio capture can die mid-call and record silence from that point on. The pipeline
+watches for it: if Track 2 goes quiet for a sustained stretch, it prints a warning with the
+timestamp and points you at the recovery tool. The lines Whisper would have invented on that dead
+audio are stripped automatically, so the transcript does not fill up with fake "thank you" and
+"subtitles by" junk.</p>
+
+<p>To get the lost words back, the Meet captions on screen are the source:</p>
+<pre><code>bash bin/stitch_captions.sh &lt;recording&gt; --region x,y,w,h</code></pre>
+<p>The one catch, learned the hard way: the caption region is fixed, so the Meet window has to stay
+in one place and size for the whole call. If you move or resize it, a single region will not cover
+the recording, and you are into recovering one layout at a time. Park the Meet window and leave it.</p>
+
+<p class="meta">casting-call · new-machine setup · 2026-07-24</p>
+<!-- ===== CONTENT END ===== -->
+
+<script>
+  /* ===== THEME SCRIPT — DO NOT EDIT (keep identical across all docs) ===== */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var stored = null;
+    try { stored = localStorage.getItem('doc-theme'); } catch (e) {}
+    var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (systemDark ? 'dark' : 'light');
+
+    function apply(t) {
+      root.setAttribute('data-theme', t);
+      btn.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+    apply(theme);
+
+    btn.addEventListener('click', function () {
+      theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(theme);
+      try { localStorage.setItem('doc-theme', theme); } catch (e) {}
+    });
+  })();
+  /* ===== END THEME SCRIPT ===== */
+</script>
+
+</body>
+</html>

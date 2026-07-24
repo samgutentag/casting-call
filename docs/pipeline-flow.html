@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>casting-call: Pipeline Flow and Routable Paths</title>
+<style>
+  /* ===== THEME CHROME — DO NOT EDIT (keep identical across all docs) ===== */
+  :root {
+    --bg: #fff;
+    --text: #1a1a1a;
+    --heading: #111;
+    --muted: #555;
+    --muted2: #444;
+    --faint: #666;
+    --rule: #ddd;
+    --dot: #e2e2e2;
+    --code-bg: #f2f2f2;
+    --setup-bg: #f6f6f4;
+    --setup-border: #e0e0dc;
+    --watch-bg: #fbf7ec;
+    --watch-border: #b58900;
+    --btn-bg: #f0f0ee;
+    --btn-border: #ccc;
+    --accent: #c9a227;
+  }
+  html[data-theme="dark"] {
+    --bg: #17191d;
+    --text: #cfd2d6;
+    --heading: #f1f2f4;
+    --muted: #9aa0a6;
+    --muted2: #b3b8bd;
+    --faint: #888e94;
+    --rule: #34383e;
+    --dot: #2b2f34;
+    --code-bg: #262a30;
+    --setup-bg: #1e2126;
+    --setup-border: #34383e;
+    --watch-bg: #241f14;
+    --watch-border: #c9a227;
+    --btn-bg: #23262b;
+    --btn-border: #3a3f45;
+  }
+  #theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #theme-toggle:hover { border-color: var(--faint); }
+  /* ===== END THEME CHROME ===== */
+
+  /* ===== BASE DOCUMENT STYLE (Sam's standing conventions) ===== */
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 46rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+    background: var(--bg);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  h1, h2, h3 {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height: 1.25;
+    color: var(--heading);
+  }
+  h1 { font-size: 1.7rem; margin: 0 0 0.25rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule);
+    page-break-after: avoid;
+  }
+  h3 { font-size: 1.02rem; margin: 1.5rem 0 0.4rem; }
+  p, li { color: var(--text); }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); }
+  code {
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1.1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 3px solid var(--watch-border);
+    background: var(--watch-bg);
+    margin: 0.8rem 0;
+    padding: 0.7rem 0.9rem;
+    page-break-inside: avoid;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--rule); padding: 0.45rem 0.7rem; text-align: left; font-size: 0.95rem; }
+  th { font-family: system-ui, sans-serif; }
+  .meta { margin-top: 2.5rem; color: var(--faint); font-size: 0.85rem; font-family: system-ui, sans-serif; }
+  /* ===== END BASE ===== */
+
+  /* ===== PRINT: force clean light, hide the toggle ===== */
+  @media print {
+    :root { --bg:#fff; --text:#1a1a1a; --heading:#111; --setup-bg:#f6f6f4; --watch-bg:#fbf7ec; --code-bg:#f2f2f2; }
+    body { margin: 0; font-size: 12pt; }
+    blockquote, pre { background: none; }
+    #theme-toggle { display: none; }
+  }
+
+  /* ===== Document-specific styles ===== */
+  .diagram-wrap { overflow-x: auto; margin: 1.2rem 0; }
+  svg.flow { display: block; margin: 0 auto; max-width: 100%; height: auto; font-family: system-ui, sans-serif; }
+  svg.flow .box { fill: var(--setup-bg); stroke: var(--setup-border); stroke-width: 1.5; }
+  svg.flow .box.fallback { fill: var(--watch-bg); stroke: var(--watch-border); stroke-dasharray: 5 3; }
+  svg.flow .box.input { fill: var(--code-bg); stroke: var(--rule); }
+  svg.flow .box.output { fill: none; stroke: var(--accent); stroke-width: 2; }
+  svg.flow .title { fill: var(--heading); font-size: 13px; font-weight: 700; }
+  svg.flow .sub { fill: var(--faint); font-size: 11px; font-family: 'SF Mono', ui-monospace, Menlo, monospace; }
+  svg.flow .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+  svg.flow .edge.opt { stroke: var(--watch-border); stroke-dasharray: 5 3; }
+  svg.flow .elabel { fill: var(--muted); font-size: 10.5px; }
+  svg.flow .arrow { fill: var(--muted); }
+  svg.flow .arrow-opt { fill: var(--watch-border); }
+</style>
+</head>
+<body>
+
+<button id="theme-toggle" type="button" aria-label="Toggle dark mode">Light mode</button>
+
+<!-- ===== CONTENT START ===== -->
+<h1>casting-call: Pipeline Flow and Routable Paths</h1>
+
+<p>The whole system after the simplification pass: one recording in, every path it can take out.
+Solid arrows are the main path. Amber dashed arrows are the fallback for when the far-side audio
+drops. Round-cornered gold boxes are the artifacts you keep. Three big things changed from the
+earlier version: the affect layer is gone, the MP4 remux is no longer a required step, and markers
+now ride inside the recording instead of a sidecar file.</p>
+
+<div class="diagram-wrap">
+<svg class="flow" viewBox="0 0 960 840" role="img"
+     aria-label="Flow diagram of the casting-call pipeline: OBS records an MKV with voice tracks plus a marker track, tracks are extracted and silence-checked before transcription, woven into a transcript, cleaned of hallucinations, and annotated with inline Track-3 markers, with a caption-recovery fallback when the far-side audio drops and an optional MP4 render.">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
+    </marker>
+    <marker id="aho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="arrow-opt"/>
+    </marker>
+  </defs>
+
+  <!-- ===== main spine (left) ===== -->
+  <rect class="box" x="40" y="24" width="300" height="60" rx="8"/>
+  <text class="title" x="56" y="48">OBS record</text>
+  <text class="sub" x="56" y="66">call.mkv: T1 you · T2 far · T3 markers</text>
+
+  <rect class="box" x="40" y="128" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="152">Extract voice tracks</text>
+  <text class="sub" x="56" y="170">-map 0:a:0 / 0:a:1 → me.wav / them.wav</text>
+
+  <rect class="box" x="40" y="232" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="256">Detect silence (before whisper)</text>
+  <text class="sub" x="56" y="274">dropout guard + silent spans</text>
+
+  <rect class="box" x="40" y="336" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="360">Transcribe each track</text>
+  <text class="sub" x="56" y="378">whisper-cli; a dead track is skipped</text>
+
+  <rect class="box" x="40" y="440" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="464">Weave by timestamp</text>
+  <text class="sub" x="56" y="482">transcripts/call.txt: [You] / [Caller]</text>
+
+  <rect class="box" x="40" y="544" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="568">Clean hallucinations</text>
+  <text class="sub" x="56" y="586">drop silent-span lines + junk phrases</text>
+
+  <rect class="box output" x="40" y="648" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="672">Embed Track-3 markers (inline)</text>
+  <text class="sub" x="56" y="690">[MARKER] lines at their own offset</text>
+
+  <rect class="box" x="40" y="752" width="300" height="56" rx="8"/>
+  <text class="title" x="56" y="776">rips: relabel Caller (optional)</text>
+  <text class="sub" x="56" y="794">caption OCR → real speaker names</text>
+
+  <!-- spine edges -->
+  <path class="edge" d="M190,84  L190,128" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,184 L190,232" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,288 L190,336" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,392 L190,440" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,496 L190,544" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,600 L190,648" marker-end="url(#ah)"/>
+  <path class="edge" d="M190,704 L190,752" marker-end="url(#ah)"/>
+
+  <!-- ===== right-side notes and branches ===== -->
+
+  <!-- markers-in-recording note -->
+  <rect class="box input" x="470" y="24" width="440" height="60" rx="8"/>
+  <text class="sub" x="486" y="46">Markers ride Track 3 inside the recording.</text>
+  <text class="sub" x="486" y="64">Same clock as the voice, so nothing to sync.</text>
+  <path class="edge" d="M340,54 L470,54" marker-end="url(#ah)"/>
+
+  <!-- Track-3 detail feeding the embed step -->
+  <rect class="box input" x="470" y="640" width="440" height="72" rx="8"/>
+  <text class="title" x="486" y="662">Track 3 = spoken "mark …" phrases</text>
+  <text class="sub" x="486" y="680">whisper reads them; each recognized phrase</text>
+  <text class="sub" x="486" y="696">becomes an inline [MARKER] line at its time</text>
+  <path class="edge" d="M470,676 L340,676" marker-end="url(#ah)"/>
+
+  <!-- FALLBACK: caption recovery -->
+  <rect class="box fallback" x="470" y="232" width="440" height="92" rx="8"/>
+  <text class="title" x="486" y="256">Far side silent? → ripcap (fallback)</text>
+  <text class="sub" x="486" y="274">OCR the on-screen Meet captions and</text>
+  <text class="sub" x="486" y="290">stitch a recovered far-side transcript.</text>
+  <text class="sub" x="486" y="306">needs a stable caption region</text>
+  <path class="edge opt" d="M340,260 C400,250 420,255 470,262" marker-end="url(#aho)"/>
+  <text class="elabel" x="352" y="240">dropout</text>
+  <path class="edge opt" d="M690,324 C690,390 470,420 342,455" marker-end="url(#aho)"/>
+  <text class="elabel" x="486" y="360">recovered words rejoin the transcript</text>
+
+  <!-- OPTIONAL render (standalone, reads the mkv) -->
+  <rect class="box output" x="470" y="440" width="440" height="72" rx="8"/>
+  <text class="title" x="486" y="462">ripv (optional): render call.mp4</text>
+  <text class="sub" x="486" y="480">video + stereo, you=L / caller=R.</text>
+  <text class="sub" x="486" y="496">playback only, reads the .mkv directly.</text>
+</svg>
+</div>
+
+<h2>The paths in words</h2>
+
+<p><strong>Happy path.</strong> OBS writes an MKV that holds the two voice tracks and, when you use
+the buttons, a third marker track. The pipeline reads that MKV directly, so there is no remux to
+sit through. It pulls the two voice tracks out by stream index, checks each for silence before
+spending any time on Whisper, transcribes them, and weaves them into one <code>[You]</code> /
+<code>[Caller]</code> transcript. Then it cleans out the hallucinations Whisper invents on silence
+and folds in your markers.</p>
+
+<p><strong>Markers.</strong> This is the part that used to be a headache and no longer is. Each
+Stream Deck button plays a short "mark flag" / "mark action" clip onto Track 3, routed so the far
+side never hears it. Because that track is recorded on the same clock as the voice, a phrase at
+14:32 lines up with 14:32 in the transcript with no alignment math at all. Whisper reads the track
+like any other, and each recognized phrase becomes an inline <code>[MARKER]</code> line dropped in at
+its moment. No sidecar file, no anchor, no plugin.</p>
+
+<p><strong>Dead-channel fallback.</strong> The silence check flags a sustained drop on the far-side
+track (Chrome App Audio Capture does this). When that happens the words only exist in the on-screen
+captions, so <code>ripcap</code> OCRs them and rebuilds the far side. The catch your first real
+recording exposed: the region is fixed, so the Meet window has to stay put. Move or resize it
+mid-call and one region no longer covers the whole thing.</p>
+
+<h2>What changed, and why</h2>
+
+<p><strong>The remux stopped being mandatory.</strong> Transcription reads the MKV fine, so the MP4
+is now an optional render (<code>ripv</code>) you make only when you want to watch a call back,
+with you on the left channel and the caller on the right. The MKV is the file you keep.</p>
+
+<p><strong>The affect layer is gone.</strong> The prosody and face-tracking scan caused more trouble
+than it earned, so it and its two heavy dependencies came out. That also un-broke the test suite.</p>
+
+<p><strong>Markers moved inside the recording.</strong> The old design logged button presses to a
+sidecar file stamped with wall-clock time, then tried to align them to the recording using a
+<code>record_start</code> anchor. OBS never wrote a reliable timestamp, which made that fragile. A
+sound on a third track has no such problem: it is already in the right place.</p>
+
+<p class="meta">casting-call · pipeline flow · updated 2026-07-24 (post-simplification)</p>
+<!-- ===== CONTENT END ===== -->
+
+<script>
+  /* ===== THEME SCRIPT — DO NOT EDIT (keep identical across all docs) ===== */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var stored = null;
+    try { stored = localStorage.getItem('doc-theme'); } catch (e) {}
+    var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (systemDark ? 'dark' : 'light');
+
+    function apply(t) {
+      root.setAttribute('data-theme', t);
+      btn.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+    apply(theme);
+
+    btn.addEventListener('click', function () {
+      theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(theme);
+      try { localStorage.setItem('doc-theme', theme); } catch (e) {}
+    });
+  })();
+  /* ===== END THEME SCRIPT ===== */
+</script>
+
+</body>
+</html>

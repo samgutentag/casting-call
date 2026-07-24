@@ -107,3 +107,41 @@ def render_transcript(entries):
         mn, sec = divmod(rem, 60)
         lines.append(f"[{h:01d}:{mn:02d}:{sec:02d}] [{entry['label']}] {entry['text']}\n")
     return ''.join(lines)
+
+
+# Phrases whisper invents on silence. Only ones that never appear in a real call,
+# so stripping them can't eat genuine speech (a real "thank you" is left alone; the
+# silence-span filter handles hallucinated ones).
+JUNK_PHRASES = frozenset({
+    'subtitles by the amara.org community',
+    'subtitles by the amara.org',
+    'thanks for watching',
+    'thank you for watching',
+    'please subscribe',
+    'like and subscribe',
+})
+
+
+def _norm(text):
+    return text.strip().lower().rstrip(' .!?')
+
+
+def strip_junk_lines(entries):
+    """Drop lines that exactly match a known whisper-on-silence hallucination."""
+    return [e for e in entries if _norm(e['text']) not in JUNK_PHRASES]
+
+
+def strip_silent_lines(entries, spans_by_label):
+    """Drop entries whose time falls inside a silent span for that entry's label.
+
+    spans_by_label maps a label ('You' / 'Caller') to a list of (start, end) second
+    ranges where that track had no audio. Lines in those ranges are transcription
+    artifacts (whisper hallucinates on silence), not real speech, so they go.
+    """
+    out = []
+    for e in entries:
+        spans = spans_by_label.get(e['label'], ())
+        if any(start <= e['t'] < end for start, end in spans):
+            continue
+        out.append(e)
+    return out

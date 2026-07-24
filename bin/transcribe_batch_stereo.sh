@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Batch transcribe stereo MP3s across date subdirectories with speaker labels
-# Assumes: left channel = your mic, right channel = call audio
-# Expects structure: <root>/<date_dir>/audio_only/*.mp3
+# Batch transcribe multi-track recordings across date subdirectories with speaker labels
+# Assumes: track 0 (0:a:0) = your mic, track 1 (0:a:1) = far side
+# Expects structure: <root>/<date_dir>/converted_video/*.mp4  (produced by ripa)
 # Transcripts saved to: <root>/<date_dir>/transcripts/
 #
 # Usage: transcribe_batch_stereo.sh [root_dir] [whisper_model_path]
@@ -79,7 +79,7 @@ print(f"Merged {len(entries)} segments")
 EOF
 }
 
-total=$(find "$ROOT_DIR" -path "*/audio_only/*.mp3" | wc -l | tr -d ' ')
+total=$(find "$ROOT_DIR" -path "*/converted_video/*.mp4" | wc -l | tr -d ' ')
 current=0
 skipped=0
 failed=0
@@ -97,13 +97,13 @@ print_progress() {
 
 echo "Root:  $ROOT_DIR"
 echo "Model: $WHISPER_MODEL"
-echo "Channels: left=[${YOU_LABEL}]  right=[${CALLER_LABEL}]"
-echo "Found $total .mp3 files"
+echo "Tracks: 0:a:0=[${YOU_LABEL}]  0:a:1=[${CALLER_LABEL}]"
+echo "Found $total .mp4 files"
 echo ""
 
-find "$ROOT_DIR" -path "*/audio_only/*.mp3" | sort | while read -r mp3_file; do
-    filename=$(basename "$mp3_file" .mp3)
-    date_dir=$(dirname "$(dirname "$mp3_file")")
+find "$ROOT_DIR" -path "*/converted_video/*.mp4" | sort | while read -r src; do
+    filename=$(basename "$src" .mp4)
+    date_dir=$(dirname "$(dirname "$src")")
     transcripts_dir="$date_dir/transcripts"
     txt_out="$transcripts_dir/${filename}.txt"
     tmp_you="/tmp/whisper_${filename}_you.wav"
@@ -122,12 +122,12 @@ find "$ROOT_DIR" -path "*/audio_only/*.mp3" | sort | while read -r mp3_file; do
 
     mkdir -p "$transcripts_dir"
 
-    print_progress 0 4 "splitting channels..."
-    ffmpeg -i "$mp3_file" \
-        -af "pan=mono|c0=c0" -ar 16000 -ac 1 -c:a pcm_s16le \
+    print_progress 0 4 "extracting tracks..."
+    ffmpeg -i "$src" \
+        -map 0:a:0 -ar 16000 -ac 1 -c:a pcm_s16le \
         "$tmp_you" -y >/dev/null 2>&1
-    ffmpeg -i "$mp3_file" \
-        -af "pan=mono|c0=c1" -ar 16000 -ac 1 -c:a pcm_s16le \
+    ffmpeg -i "$src" \
+        -map 0:a:1 -ar 16000 -ac 1 -c:a pcm_s16le \
         "$tmp_caller" -y >/dev/null 2>&1
 
     print_progress 1 4 "transcribing [${YOU_LABEL}]..."

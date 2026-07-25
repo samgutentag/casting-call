@@ -26,6 +26,7 @@
 
 INPUT_DIR="${1:-.}"
 WHISPER_MODEL="${2:-$HOME/whisper-models/ggml-large-v3.bin}"
+VAD_MODEL="${VAD_MODEL:-$HOME/whisper-models/ggml-silero-v5.1.2.bin}"
 
 YOU_LABEL="You"
 CALLER_LABEL="Caller"
@@ -58,6 +59,26 @@ if [ ! -f "$WHISPER_MODEL" ]; then
     echo "    'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'"
     exit 1
 fi
+
+# Voice Activity Detection: with the silero VAD model present, whisper only
+# transcribes detected speech, which stops it hallucinating looped lines on
+# non-speech audio. Graceful: without the model, fall back to plain transcription
+# (the silence trim + cleanup still run).
+VAD_FLAG=()
+if [ -f "$VAD_MODEL" ]; then
+    VAD_FLAG=(--vad --vad-model "$VAD_MODEL")
+else
+    echo "note: VAD model not found at $VAD_MODEL; transcribing without VAD (more hallucination risk)."
+    echo "      get it: curl -sL -o \"$VAD_MODEL\" https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+fi
+
+# Absolutize the input dir. The clean/markers/relabel steps below run inside a
+# `cd "$REPO_DIR"` subshell, so a relative path (e.g. `ripa` with no arg from a
+# call folder) would resolve against the repo and not be found. Resolve it once here.
+if [ ! -d "$INPUT_DIR" ]; then
+    echo "Error: directory not found: $INPUT_DIR"; exit 1
+fi
+INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
 
 mkdir -p "$INPUT_DIR/transcripts"
 
@@ -104,6 +125,20 @@ silent_fraction() {
 }
 
 fmt_hms() { awk -v s="$1" 'BEGIN{ s=int(s); printf "%d:%02d:%02d", s/3600, (s%3600)/60, s%60 }'; }
+
+# If the track ends in a sustained silence (a span whose end reaches within
+# TRAIL_TOL seconds of EOF), return the second where that silence starts: the cut
+# point. Empty if there is no trailing silence. ONLY trailing silence qualifies,
+# so trimming at the cut never shifts an earlier timestamp and alignment holds.
+TRAIL_TOL_SECONDS=5
+trailing_cut() {
+    awk -v spans="$1" -v dur="$2" -v tol="$TRAIL_TOL_SECONDS" 'BEGIN{
+        n=split(spans, a, ","); cut=-1
+        for(i=1;i<=n;i++){ if(a[i]=="")continue; split(a[i], p, ":");
+            if (p[2] >= dur - tol && p[1] > cut) cut=p[1] }
+        if (cut >= 0) printf "%d", cut
+    }'
+}
 
 PROGRESS_SCRIPT=$(mktemp /tmp/whisper_progress_XXXX.py)
 trap 'rm -f "$PROGRESS_SCRIPT"' EXIT
@@ -182,7 +217,8 @@ EOF
 # the merge proceed with just the other track).
 transcribe_track() {
     local wav="$1" srt_base="$2" label="$3" spans="$4"
-    local dur frac
+    local dur frac cut proc_dur
+    local dur_flag=()
     dur=$(get_duration "$wav")
     frac=$(silent_fraction "$spans" "${dur:-0}")
     if awk -v f="$frac" 'BEGIN{exit !(f >= 0.95)}'; then
@@ -190,10 +226,21 @@ transcribe_track() {
         : > "${srt_base}.srt"
         return
     fi
+    # Trailing-silence trim: if the track goes quiet and never recovers, cap whisper
+    # at the cut so it does not grind through (and hallucinate on) the dead tail.
+    # Only ever trims the END, so earlier timestamps do not move and alignment holds.
+    proc_dur="$dur"
+    cut=$(trailing_cut "$spans" "${dur:-0}")
+    if [ -n "$cut" ] && [ "$cut" -lt "${dur:-0}" ] 2>/dev/null; then
+        dur_flag=(--duration $(( cut * 1000 )))   # stop at the silence start; padding into it re-invites a boundary hallucination
+        proc_dur="$cut"
+        echo "  ✂  ${label}: trailing silence from $(fmt_hms "$cut"), transcribing only up to there"
+    fi
     GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
     "$WHISPER_BIN" --model "$WHISPER_MODEL" --beam-size 5 --entropy-thold 2.4 -mc 0 \
+        "${VAD_FLAG[@]}" "${dur_flag[@]}" \
         --output-srt --output-file "$srt_base" "$wav" 2>/dev/null \
-        | whisper_progress "$label" "$(get_duration "$wav")"
+        | whisper_progress "$label" "$proc_dur"
 }
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -272,7 +319,7 @@ for input_file in "${recordings[@]}"; do
         tmp_t3_txt="/tmp/whisper_${filename}_t3.txt"
         ffmpeg -i "$input_file" -map 0:a:2 -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_t3" -y -loglevel error
         GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
-        "$WHISPER_BIN" --model "$WHISPER_MODEL" -mc 0 --output-srt \
+        "$WHISPER_BIN" --model "$WHISPER_MODEL" -mc 0 "${VAD_FLAG[@]}" --output-srt \
             --output-file "/tmp/whisper_${filename}_t3" "$tmp_t3" 2>/dev/null \
             | whisper_progress "markers" "$(get_duration "$tmp_t3")"
         merge_srt "$tmp_t3_srt" "/dev/null" "T3" "-" "$tmp_t3_txt" >/dev/null

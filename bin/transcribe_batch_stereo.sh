@@ -12,6 +12,7 @@
 
 ROOT_DIR="${1:-.}"
 WHISPER_MODEL="${2:-$HOME/whisper-models/ggml-large-v3-q5_0.bin}"
+VAD_MODEL="${VAD_MODEL:-$HOME/whisper-models/ggml-silero-v5.1.2.bin}"
 
 YOU_LABEL="You"
 CALLER_LABEL="Caller"
@@ -31,6 +32,12 @@ fi
 if [ ! -f "$WHISPER_MODEL" ]; then
     echo "Error: Whisper model not found at: $WHISPER_MODEL"
     exit 1
+fi
+
+# VAD: only transcribe detected speech so whisper does not hallucinate on non-speech.
+VAD_FLAG=()
+if [ -f "$VAD_MODEL" ]; then
+    VAD_FLAG=(--vad --vad-model "$VAD_MODEL")
 fi
 
 # Merge two SRT files into a single speaker-labeled transcript sorted by timestamp
@@ -134,6 +141,7 @@ find "$ROOT_DIR" -path "*/converted_video/*.mp4" | sort | while read -r src; do
     GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
     "$WHISPER_BIN" \
         --model "$WHISPER_MODEL" \
+        "${VAD_FLAG[@]}" \
         --output-srt \
         --output-file "/tmp/whisper_${filename}_you" \
         "$tmp_you" >/dev/null 2>&1
@@ -142,6 +150,7 @@ find "$ROOT_DIR" -path "*/converted_video/*.mp4" | sort | while read -r src; do
     GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
     "$WHISPER_BIN" \
         --model "$WHISPER_MODEL" \
+        "${VAD_FLAG[@]}" \
         --output-srt \
         --output-file "/tmp/whisper_${filename}_caller" \
         "$tmp_caller" >/dev/null 2>&1

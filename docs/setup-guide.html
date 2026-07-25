@@ -177,6 +177,11 @@ mkdir -p ~/whisper-models
 curl -o ~/whisper-models/ggml-large-v3.bin -L \
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'
 
+# Silero VAD model (~1 MB, one time) so Whisper only transcribes real speech and
+# stops inventing looped lines on non-speech audio
+curl -sL -o ~/whisper-models/ggml-silero-v5.1.2.bin \
+  https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
+
 # The repo
 git clone https://github.com/samgutentag/casting-call.git ~/Developer/casting-call
 cd ~/Developer/casting-call

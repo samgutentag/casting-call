@@ -94,6 +94,10 @@ mkdir -p ~/whisper-models
 curl -o ~/whisper-models/ggml-large-v3.bin -L \
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'
 
+# Silero VAD model (~1 MB) so Whisper only transcribes real speech
+curl -sL -o ~/whisper-models/ggml-silero-v5.1.2.bin \
+  https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
+
 # Your roster of names (stays local, gitignored)
 cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pre>
 <div class="note">The short command names (<code>ripa</code>, <code>rips</code>, and the rest) are shell aliases that live in a separate dotfiles repo, not here. Every command also works without them: run <code>bash bin/&lt;script&gt;.sh ...</code> from the repo root. This guide shows both.</div>

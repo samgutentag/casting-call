@@ -145,3 +145,21 @@ def strip_silent_lines(entries, spans_by_label):
             continue
         out.append(e)
     return out
+
+
+def collapse_repeats(entries):
+    """Collapse consecutive identical multi-word lines from the same speaker to
+    one. Whisper loops on non-speech by repeating the same phrase; genuine
+    back-channel ('Yeah.', 'Okay.') is single-word and is left alone. This is a
+    backstop for hallucinations that slip past the silence and VAD passes.
+    """
+    out = []
+    for e in entries:
+        if out:
+            prev = out[-1]
+            if (prev['label'] == e['label']
+                    and _norm(prev['text']) == _norm(e['text'])
+                    and len(e['text'].split()) >= 2):
+                continue
+        out.append(e)
+    return out

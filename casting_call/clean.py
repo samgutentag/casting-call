@@ -20,6 +20,7 @@ from pathlib import Path
 
 from casting_call.transcript import (
     parse_transcript, render_transcript, strip_silent_lines, strip_junk_lines,
+    collapse_repeats,
 )
 
 
@@ -53,6 +54,7 @@ def main(argv=None):
     }
     entries = strip_silent_lines(entries, spans_by_label)
     entries = strip_junk_lines(entries)
+    entries = collapse_repeats(entries)
 
     path.write_text(render_transcript(entries), encoding="utf-8")
     removed = before - len(entries)

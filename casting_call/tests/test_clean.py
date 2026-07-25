@@ -1,5 +1,5 @@
 from casting_call.transcript import (
-    parse_transcript, strip_junk_lines, strip_silent_lines,
+    parse_transcript, strip_junk_lines, strip_silent_lines, collapse_repeats,
 )
 
 
@@ -35,3 +35,29 @@ def test_strip_silent_lines_drops_only_that_labels_span():
 def test_strip_silent_lines_no_spans_is_noop():
     entries = parse_transcript("[0:00:05] [You] hi\n[0:00:10] [Caller] hey\n")
     assert strip_silent_lines(entries, {}) == entries
+
+
+def test_collapse_repeats_drops_consecutive_loop_lines():
+    entries = parse_transcript(
+        "[0:30:08] [You] I hope you enjoyed this video.\n"
+        "[0:30:12] [You] I hope you enjoyed this video.\n"
+        "[0:30:16] [You] I hope you enjoyed this video.\n"
+        "[0:30:20] [You] okay next thing\n"
+    )
+    out = collapse_repeats(entries)
+    assert [e['text'] for e in out] == ['I hope you enjoyed this video.', 'okay next thing']
+
+
+def test_collapse_keeps_single_word_backchannel():
+    # real 'Yeah. Yeah.' is single-word, must survive
+    entries = parse_transcript("[0:00:01] [You] Yeah.\n[0:00:02] [You] Yeah.\n")
+    assert len(collapse_repeats(entries)) == 2
+
+
+def test_collapse_only_within_same_speaker():
+    entries = parse_transcript(
+        "[0:00:01] [You] same words here\n"
+        "[0:00:02] [Caller] same words here\n"
+    )
+    # different speakers saying the same thing is not a loop
+    assert len(collapse_repeats(entries)) == 2

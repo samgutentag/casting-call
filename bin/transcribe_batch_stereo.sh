@@ -2,8 +2,8 @@
 
 # Batch transcribe multi-track recordings across date subdirectories with speaker labels
 # Assumes: track 0 (0:a:0) = your mic, track 1 (0:a:1) = far side
-# Expects structure: <root>/<date_dir>/converted_video/*.mp4  (produced by ripa)
-# Transcripts saved to: <root>/<date_dir>/transcripts/
+# Expects structure: <root>/<date_dir>/converted_video/*.mp4  (produced by ripv)
+# Output saved to:    <root>/<date_dir>/<name>/<name>.txt  (per-recording folder)
 #
 # Usage: transcribe_batch_stereo.sh [root_dir] [whisper_model_path]
 #
@@ -111,8 +111,8 @@ echo ""
 find "$ROOT_DIR" -path "*/converted_video/*.mp4" | sort | while read -r src; do
     filename=$(basename "$src" .mp4)
     date_dir=$(dirname "$(dirname "$src")")
-    transcripts_dir="$date_dir/transcripts"
-    txt_out="$transcripts_dir/${filename}.txt"
+    rec_dir="$date_dir/${filename}"
+    txt_out="$rec_dir/${filename}.txt"
     tmp_you="/tmp/whisper_${filename}_you.wav"
     tmp_caller="/tmp/whisper_${filename}_caller.wav"
     tmp_srt_you="/tmp/whisper_${filename}_you.srt"
@@ -127,7 +127,7 @@ find "$ROOT_DIR" -path "*/converted_video/*.mp4" | sort | while read -r src; do
         continue
     fi
 
-    mkdir -p "$transcripts_dir"
+    mkdir -p "$rec_dir"
 
     print_progress 0 4 "extracting tracks..."
     ffmpeg -i "$src" \

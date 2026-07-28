@@ -128,7 +128,7 @@ cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pr
 <pre><code>ripa ~/calls/2026-07-24
 # or, without the alias:
 bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
-<p>For each recording it pulls Track 1 and Track 2 out as mono audio, checks each for silence, transcribes the ones that have speech, and weaves them into <code>transcripts/&lt;name&gt;.txt</code>. Then it reads Track 3 and folds your markers in at their timestamps. A recording that already has a transcript is skipped, so re-running the folder is safe and cheap.</p>
+<p>For each recording it makes a folder named after the recording and puts everything there. The merged transcript is <code>&lt;name&gt;/&lt;name&gt;.txt</code> and a combined MP3 of all tracks mixed together is <code>&lt;name&gt;/&lt;name&gt;.mp3</code>, with a <code>parts/</code> subfolder holding each track on its own (<code>you.mp3</code>, <code>caller.mp3</code>, <code>markers.mp3</code>) and its own raw transcript. To build the merged transcript it pulls Track 1 and Track 2 out as mono audio, checks each for silence, transcribes the ones that have speech, and weaves them together. Then it reads Track 3 and folds your markers in at their timestamps. A recording that already has a transcript is skipped, so re-running the folder is safe and cheap.</p>
 
 <figure>
   <div class="diagram">
@@ -154,7 +154,7 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
     <line x1="346" y1="102" x2="398" y2="102" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
 
     <rect x="400" y="40" width="222" height="128" rx="6" fill="#f4f5f7" stroke="#ddd"/>
-    <text x="412" y="60" class="svg-label" font-size="9.5" fill="#888">transcripts/name.txt</text>
+    <text x="412" y="60" class="svg-label" font-size="9.5" fill="#888">name/name.txt</text>
     <text x="412" y="80"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:11] [You] we'll go here</text>
     <text x="412" y="98"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:12] [Caller] send the deck</text>
     <text x="412" y="116" class="svg-label" font-size="9.5" fill="#b2741a">[0:00:12] [MARKER] action</text>
@@ -177,8 +177,8 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
 <table>
   <thead><tr><th>Command</th><th>Script</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every recording in a folder to <code>transcripts/</code>, markers folded in.</td></tr>
-    <tr><td><code>ript [root]</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Transcribe across dated subfolders (<code>&lt;root&gt;/&lt;date&gt;/converted_video/*.mp4</code>).</td></tr>
+    <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every recording in a folder to its own <code>&lt;name&gt;/</code> folder (transcript + combined MP3 + per-track <code>parts/</code>), markers folded in.</td></tr>
+    <tr><td><code>ript [root]</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Transcribe across dated subfolders (<code>&lt;root&gt;/&lt;date&gt;/converted_video/*.mp4</code>) into each recording's <code>&lt;name&gt;/</code> folder.</td></tr>
     <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: render a playable <code>.mp4</code>, you on the left channel, caller on the right.</td></tr>
     <tr><td><code>rips rec --region ...</code></td><td><code>extract_speakers.sh</code></td><td>OCR the captions, put real names on <code>Caller</code> lines.</td></tr>
     <tr><td><code>ripcap rec --region ...</code></td><td><code>stitch_captions.sh</code></td><td>Rebuild the far-side words from captions when its audio failed.</td></tr>
@@ -188,9 +188,9 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
 
 <h2 id="attribute">6. Put names on speakers <span class="tag">rips</span></h2>
 <p>A fresh transcript calls everyone on the far side <code>Caller</code>. Meet's on-screen captions already say who is speaking, so <code>rips</code> samples the video, OCRs the caption band, matches names against your roster, and rewrites the <code>Caller</code> lines with real names. Names it cannot place stay <code>Caller</code>, and it asks you about the ones it is unsure of.</p>
-<pre><code>rips recording.mkv --region 120,1850,900,180 --transcript transcripts/recording.txt
+<pre><code>rips recording.mkv --region 120,1850,900,180 --transcript recording/recording.txt
 # or:
-bash bin/extract_speakers.sh recording.mkv --region 120,1850,900,180 --transcript transcripts/recording.txt</code></pre>
+bash bin/extract_speakers.sh recording.mkv --region 120,1850,900,180 --transcript recording/recording.txt</code></pre>
 
 <figure>
   <div class="diagram">
@@ -198,7 +198,7 @@ bash bin/extract_speakers.sh recording.mkv --region 120,1850,900,180 --transcrip
     <text x="20" y="40" class="svg-label" font-size="13" font-weight="800" fill="#2f6f4f">rips</text>
     <text x="70" y="40" class="svg-label" font-size="13" fill="#1a1a1a">recording.mkv</text>
     <text x="230" y="40" class="svg-label" font-size="13" fill="#b2741a">--region 120,1850,900,180</text>
-    <text x="20" y="62" class="svg-label" font-size="13" fill="#1d7a4d">--transcript transcripts/recording.txt</text>
+    <text x="20" y="62" class="svg-label" font-size="13" fill="#1d7a4d">--transcript recording/recording.txt</text>
 
     <line x1="34" y1="48" x2="34" y2="86" stroke="#888" stroke-width="1"/>
     <text x="34" y="100" text-anchor="middle" class="svg-label" font-size="9.5" fill="#555">the tool</text>
@@ -247,14 +247,14 @@ bash bin/stitch_captions.sh recording.mkv --region 120,1850,900,180</code></pre>
 <h2 id="extras">8. Render video and batch <span class="tag">ripv</span> <span class="tag alt">ript</span></h2>
 <p><code>ripv</code> is optional and only for when you want to watch a call back. It rebuilds the audio into one stereo track, you on the left channel and the caller on the right, copies the video without re-encoding, and writes a <code>.mp4</code> to <code>converted_video/</code>. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
 <pre><code>ripv ~/calls/2026-07-24     # -> converted_video/*.mp4, you=left / caller=right</code></pre>
-<p><code>ript</code> is <code>ripa</code> for many folders at once: point it at a parent directory and it transcribes every <code>converted_video/*.mp4</code> under each dated subfolder.</p>
+<p><code>ript</code> is a batch transcriber for many folders at once: point it at a parent directory and it transcribes every <code>converted_video/*.mp4</code> under each dated subfolder, writing each into its own <code>&lt;name&gt;/&lt;name&gt;.txt</code>. It is the older, simpler path (no combined MP3, no <code>parts/</code>, no markers); <code>ripa</code> run on the raw <code>.mkv</code> is the fuller pipeline.</p>
 
 <h2 id="faq">9. Good to know</h2>
 <dl class="defn">
   <dt>How do I run these without the aliases?</dt>
   <dd>Every command maps to a script in <code>bin/</code>. Run <code>bash bin/&lt;script&gt;.sh ...</code> from the repo root. The mapping is in the commands table above.</dd>
   <dt>What does it write to disk?</dt>
-  <dd><code>ripa</code> writes <code>transcripts/</code>. <code>ripv</code> writes <code>converted_video/</code>. <code>rips</code> writes <code>frames/</code> and <code>speakers.json</code> and edits the transcript in place. <code>ripcap</code> writes a stitched transcript. Your original recording is never modified.</dd>
+  <dd><code>ripa</code> writes a <code>&lt;name&gt;/</code> folder per recording (merged transcript, combined MP3, and a <code>parts/</code> subfolder of per-track MP3s and transcripts). <code>ripv</code> writes <code>converted_video/</code>. <code>rips</code> writes <code>frames/</code> and <code>speakers.json</code> and edits the transcript in place. <code>ripcap</code> writes a stitched transcript. Your original recording is never modified.</dd>
   <dt>Is it safe to re-run?</dt>
   <dd>Yes. <code>ripa</code> skips any recording that already has a transcript, so re-running a folder only picks up new files. Delete a transcript if you want it rebuilt.</dd>
   <dt>Why is there a repeated "Thank you" or "Amara.org" line in an old transcript?</dt>

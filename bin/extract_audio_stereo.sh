@@ -20,7 +20,7 @@
 #   speakers.json timeline exists.
 #
 # Usage: extract_audio_stereo.sh [directory] [whisper_model_path]
-# Output: transcripts/<name>.txt
+# Output: <name>/<name>.txt (merged) + <name>/<name>.mp3 (combined) + <name>/parts/<track>.{mp3,txt}
 #
 # Dependencies: brew install whisper-cpp ffmpeg
 
@@ -79,8 +79,6 @@ if [ ! -d "$INPUT_DIR" ]; then
     echo "Error: directory not found: $INPUT_DIR"; exit 1
 fi
 INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
-
-mkdir -p "$INPUT_DIR/transcripts"
 
 shopt -s nullglob
 recordings=("$INPUT_DIR"/*.mkv "$INPUT_DIR"/*.mp4)
@@ -257,9 +255,13 @@ current=0
 for input_file in "${recordings[@]}"; do
     filename=$(basename "$input_file"); filename="${filename%.*}"
     current=$((current + 1))
-    txt_out="$INPUT_DIR/transcripts/${filename}.txt"
+    rec_dir="$INPUT_DIR/$filename"
+    parts_dir="$rec_dir/parts"
+    txt_out="$rec_dir/${filename}.txt"
+    combined_mp3="$rec_dir/${filename}.mp3"
     tmp_you="/tmp/whisper_${filename}_you.wav"
     tmp_caller="/tmp/whisper_${filename}_caller.wav"
+    tmp_t3="/tmp/whisper_${filename}_t3.wav"
     tmp_srt_you="/tmp/whisper_${filename}_you.srt"
     tmp_srt_caller="/tmp/whisper_${filename}_caller.srt"
 
@@ -274,12 +276,43 @@ for input_file in "${recordings[@]}"; do
         continue
     fi
 
-    # Extract each track (mono 16k + loudnorm) straight from the source container.
+    mkdir -p "$parts_dir"
+
+    # ONE demux pass. filter_complex fans each track into: a 16k mono WAV (whisper,
+    # transient), a source-rate MP3 (deliverable), and an amix branch for the combined
+    # mono MP3. you/caller get loudnorm; the markers track is left raw. The combined
+    # mix is loudnorm'd once more so the summed file sits at a sane level.
     echo "  → Extracting tracks..."
-    ffmpeg -i "$input_file" -map 0:a:0 -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
-        -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you" -y -loglevel error
-    ffmpeg -i "$input_file" -map 0:a:1 -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
-        -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller" -y -loglevel error
+    LN="loudnorm=I=-16:TP=-1.5:LRA=11"
+    if has_stream "$input_file" "a:2"; then
+        fc="[0:a:0]${LN},asplit=3[you_w][you_m][you_x];"
+        fc+="[0:a:1]${LN},asplit=3[cal_w][cal_m][cal_x];"
+        fc+="[0:a:2]asplit=3[t3_w][t3_m][t3_x];"
+        fc+="[you_x][cal_x][t3_x]amix=inputs=3:normalize=1,${LN}[mix]"
+        ffmpeg -i "$input_file" -filter_complex "$fc" \
+            -map "[you_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you" \
+            -map "[cal_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller" \
+            -map "[t3_w]"  -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_t3" \
+            -map "[you_m]" -c:a libmp3lame -q:a 2 "$parts_dir/you.mp3" \
+            -map "[cal_m]" -c:a libmp3lame -q:a 2 "$parts_dir/caller.mp3" \
+            -map "[t3_m]"  -c:a libmp3lame -q:a 4 "$parts_dir/markers.mp3" \
+            -map "[mix]"   -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3" \
+            -y -loglevel error
+    else
+        fc="[0:a:0]${LN},asplit=3[you_w][you_m][you_x];"
+        fc+="[0:a:1]${LN},asplit=3[cal_w][cal_m][cal_x];"
+        fc+="[you_x][cal_x]amix=inputs=2:normalize=1,${LN}[mix]"
+        ffmpeg -i "$input_file" -filter_complex "$fc" \
+            -map "[you_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you" \
+            -map "[cal_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller" \
+            -map "[you_m]" -c:a libmp3lame -q:a 2 "$parts_dir/you.mp3" \
+            -map "[cal_m]" -c:a libmp3lame -q:a 2 "$parts_dir/caller.mp3" \
+            -map "[mix]"   -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3" \
+            -y -loglevel error
+    fi
+    if [ $? -ne 0 ] || [ ! -s "$tmp_you" ] || [ ! -s "$tmp_caller" ]; then
+        echo "  ✗ Extraction failed for $filename; skipping."; continue
+    fi
 
     # Detect silence BEFORE transcribing: spans clean hallucinations, and a
     # sustained one flags a probable dropout.
@@ -302,6 +335,10 @@ for input_file in "${recordings[@]}"; do
     result=$(merge_srt "$tmp_srt_you" "$tmp_srt_caller" "$YOU_LABEL" "$CALLER_LABEL" "$txt_out")
     echo "  ✓ Woven ($result)"
 
+    # Raw per-track transcripts (pre-clean) for reference in parts/.
+    merge_srt "$tmp_srt_you"    "/dev/null" "$YOU_LABEL"    "-" "$parts_dir/you.txt"    >/dev/null
+    merge_srt "$tmp_srt_caller" "/dev/null" "$CALLER_LABEL" "-" "$parts_dir/caller.txt" >/dev/null
+
     # Strip hallucinations: lines inside a silent span for their channel, + junk phrases.
     ( cd "$REPO_DIR" && python3 -m casting_call.clean "$txt_out" \
         --you-label "$YOU_LABEL" --caller-label "$CALLER_LABEL" \
@@ -314,17 +351,14 @@ for input_file in "${recordings[@]}"; do
     # the track is ignored, since only known marker keywords match.
     if has_stream "$input_file" "a:2"; then
         echo "  → Parsing Track 3 markers..."
-        tmp_t3="/tmp/whisper_${filename}_t3.wav"
         tmp_t3_srt="/tmp/whisper_${filename}_t3.srt"
-        tmp_t3_txt="/tmp/whisper_${filename}_t3.txt"
-        ffmpeg -i "$input_file" -map 0:a:2 -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_t3" -y -loglevel error
         GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
         "$WHISPER_BIN" --model "$WHISPER_MODEL" -mc 0 "${VAD_FLAG[@]}" --output-srt \
             --output-file "/tmp/whisper_${filename}_t3" "$tmp_t3" 2>/dev/null \
             | whisper_progress "markers" "$(get_duration "$tmp_t3")"
-        merge_srt "$tmp_t3_srt" "/dev/null" "T3" "-" "$tmp_t3_txt" >/dev/null
-        ( cd "$REPO_DIR" && python3 -m casting_call.markers "$txt_out" "$tmp_t3_txt" | sed 's/^/  → /' )
-        rm -f "$tmp_t3" "$tmp_t3_srt" "$tmp_t3_txt"
+        merge_srt "$tmp_t3_srt" "/dev/null" "T3" "-" "$parts_dir/markers.txt" >/dev/null
+        ( cd "$REPO_DIR" && python3 -m casting_call.markers "$txt_out" "$parts_dir/markers.txt" | sed 's/^/  → /' )
+        rm -f "$tmp_t3_srt"
     fi
 
     # Relabel Caller lines from a caption-derived speaker timeline, if present.
@@ -350,8 +384,8 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 " "$txt_out" "$speakers_json" )
     fi
 
-    rm -f "$tmp_you" "$tmp_caller" "$tmp_srt_you" "$tmp_srt_caller"
+    rm -f "$tmp_you" "$tmp_caller" "$tmp_t3" "$tmp_srt_you" "$tmp_srt_caller"
 done
 
 echo ""
-echo "Complete!  Transcripts → $INPUT_DIR/transcripts/"
+echo "Complete!  Output → $INPUT_DIR/<name>/ (combined mp3 + transcript, parts/ for tracks)"

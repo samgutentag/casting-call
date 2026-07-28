@@ -28,12 +28,6 @@ disk (it happens; ask me how I know, twice), the captions burned into the video 
 words. The stitcher OCRs every caption frame and merges the rolling, overlapping text
 into one attributed transcript.
 
-And one safety net for the *next* recording: **`callcheck`** verifies both channels are
-actually capturing, either on an existing file (sampled scan, ~20s even on multi-GB
-recordings) or live at the start of a call. `bin/callcheck_live.command` is a
-Stream-Deck-ready front end: point a "System: Open" key at it and you get a 6-second
-capture plus a PASS/FAIL notification before the call gets going.
-
 ## Commands
 
 | Alias | Script | Does |
@@ -42,8 +36,7 @@ capture plus a PASS/FAIL notification before the call gets going.
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
 | `ript` | `transcribe_batch_stereo.sh` | batch transcribe across dated folders |
-| `ripv` / `riprec` | `convert_video.sh` / `convert_recordings.sh` | compress video / audio+video housekeeping |
-| `callcheck` | `callcheck.sh` | verify both channels (file, `--fast`, `--full`, or `--live`) |
+| `ripv` | `convert_video.sh` | compress video into a smaller playable copy (you=L / caller=R) |
 
 The aliases live in my gutils shell config, not here. Every script works without them:
 `bash bin/<script>.sh ...` from the repo root.
@@ -51,14 +44,13 @@ The aliases live in my gutils shell config, not here. Every script works without
 ## Typical session
 
 ```bash
-callcheck --live                                   # before the call: is the rig capturing both sides?
 # ...record the call with OBS (multi-track: mic, far side, markers)...
 ripa ~/calls/2026-07-06                            # transcribe everything in the folder
 rips recording.mkv --region 120,1850,900,180 \
      --transcript transcripts/recording.txt        # put real names on the Caller lines
 ```
 
-And when `callcheck` would have failed but you did not run it:
+And when the far-side audio never made it to disk:
 
 ```bash
 ripcap recording.mkv --region 120,1850,900,180     # words, from the captions

@@ -35,8 +35,7 @@ into one attributed transcript.
 | `ripa` | `extract_audio_stereo.sh` | extract + transcribe + auto-relabel if a timeline exists |
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
-| `ript` | `transcribe_batch_stereo.sh` | batch transcribe across dated folders |
-| `ripv` | `convert_video.sh` | compress video into a smaller playable copy (you=L / caller=R) |
+| `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio mixed you=L / caller=R |
 
 The aliases live in my gutils shell config, not here. Every script works without them:
 `bash bin/<script>.sh ...` from the repo root.
@@ -63,8 +62,8 @@ brew install tesseract ffmpeg whisper-cpp
 pip install --break-system-packages pillow numpy pytesseract pytest
 ```
 
-Whisper model (the batch scripts default to the smaller `-q5_0` variant; the error
-message tells you which to fetch):
+Whisper model (`ripa` defaults to `ggml-large-v3.bin`; the error message tells you
+which to fetch if it is missing):
 
 ```bash
 mkdir -p ~/whisper-models

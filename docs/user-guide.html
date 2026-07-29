@@ -74,7 +74,7 @@
     <li><a href="#commands">Commands and flags</a></li>
     <li><a href="#attribute">Put names on speakers (rips)</a></li>
     <li><a href="#recover">Recover a dead channel (ripcap)</a></li>
-    <li><a href="#extras">Render video, batch (ripv, ript)</a></li>
+    <li><a href="#extras">Render video (ripv)</a></li>
     <li><a href="#faq">Good to know</a></li>
   </ol>
 </nav>
@@ -178,13 +178,12 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
   <thead><tr><th>Command</th><th>Script</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every recording in a folder to its own <code>&lt;name&gt;/</code> folder (transcript + combined MP3 + per-track <code>parts/</code>), markers folded in.</td></tr>
-    <tr><td><code>ript [root]</code></td><td><code>transcribe_batch_stereo.sh</code></td><td>Transcribe across dated subfolders (<code>&lt;root&gt;/&lt;date&gt;/converted_video/*.mp4</code>) into each recording's <code>&lt;name&gt;/</code> folder.</td></tr>
-    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: render a playable <code>.mp4</code>, you on the left channel, caller on the right.</td></tr>
+    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: re-encode to a smaller H.265 <code>.mp4</code> in the recording's <code>&lt;name&gt;/</code> folder, you on the left channel, caller on the right.</td></tr>
     <tr><td><code>rips rec --region ...</code></td><td><code>extract_speakers.sh</code></td><td>OCR the captions, put real names on <code>Caller</code> lines.</td></tr>
     <tr><td><code>ripcap rec --region ...</code></td><td><code>stitch_captions.sh</code></td><td>Rebuild the far-side words from captions when its audio failed.</td></tr>
   </tbody>
 </table>
-<p><code>ripa</code>, <code>ript</code>, and <code>ripv</code> take a directory (default: current) and, for the transcribers, an optional Whisper model path as a second argument. The two caption tools take the recording plus the flags below.</p>
+<p><code>ripa</code> and <code>ripv</code> take a directory (default: current), and <code>ripa</code> takes an optional Whisper model path as a second argument. The two caption tools take the recording plus the flags below.</p>
 
 <h2 id="attribute">6. Put names on speakers <span class="tag">rips</span></h2>
 <p>A fresh transcript calls everyone on the far side <code>Caller</code>. Meet's on-screen captions already say who is speaking, so <code>rips</code> samples the video, OCRs the caption band, matches names against your roster, and rewrites the <code>Caller</code> lines with real names. Names it cannot place stay <code>Caller</code>, and it asks you about the ones it is unsure of.</p>
@@ -244,17 +243,16 @@ bash bin/stitch_captions.sh recording.mkv --region 120,1850,900,180</code></pre>
 </table>
 <div class="warn">The caption region is fixed for the whole run, so the Meet window has to stay in one place and size during the call. If it moved or resized, a single region will not cover the recording, and you have to recover one layout at a time.</div>
 
-<h2 id="extras">8. Render video and batch <span class="tag">ripv</span> <span class="tag alt">ript</span></h2>
-<p><code>ripv</code> is optional and only for when you want to watch a call back. It rebuilds the audio into one stereo track, you on the left channel and the caller on the right, copies the video without re-encoding, and writes a <code>.mp4</code> to <code>converted_video/</code>. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
-<pre><code>ripv ~/calls/2026-07-24     # -> converted_video/*.mp4, you=left / caller=right</code></pre>
-<p><code>ript</code> is a batch transcriber for many folders at once: point it at a parent directory and it transcribes every <code>converted_video/*.mp4</code> under each dated subfolder, writing each into its own <code>&lt;name&gt;/&lt;name&gt;.txt</code>. It is the older, simpler path (no combined MP3, no <code>parts/</code>, no markers); <code>ripa</code> run on the raw <code>.mkv</code> is the fuller pipeline.</p>
+<h2 id="extras">8. Render video <span class="tag">ripv</span></h2>
+<p><code>ripv</code> is optional and only for when you want to watch a call back. It rebuilds the audio into one stereo track, you on the left channel and the caller on the right, re-encodes the video to H.265 (much smaller than the source, and playable in QuickTime/IINA on macOS), and writes the <code>.mp4</code> into the recording's own <code>&lt;name&gt;/</code> folder, next to what <code>ripa</code> produces. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
+<pre><code>ripv ~/calls/2026-07-24     # -> &lt;name&gt;/&lt;name&gt;.mp4, you=left / caller=right</code></pre>
 
 <h2 id="faq">9. Good to know</h2>
 <dl class="defn">
   <dt>How do I run these without the aliases?</dt>
   <dd>Every command maps to a script in <code>bin/</code>. Run <code>bash bin/&lt;script&gt;.sh ...</code> from the repo root. The mapping is in the commands table above.</dd>
   <dt>What does it write to disk?</dt>
-  <dd><code>ripa</code> writes a <code>&lt;name&gt;/</code> folder per recording (merged transcript, combined MP3, and a <code>parts/</code> subfolder of per-track MP3s and transcripts). <code>ripv</code> writes <code>converted_video/</code>. <code>rips</code> writes <code>frames/</code> and <code>speakers.json</code> and edits the transcript in place. <code>ripcap</code> writes a stitched transcript. Your original recording is never modified.</dd>
+  <dd><code>ripa</code> writes a <code>&lt;name&gt;/</code> folder per recording (merged transcript, combined MP3, and a <code>parts/</code> subfolder of per-track MP3s and transcripts). <code>ripv</code> adds a <code>&lt;name&gt;/&lt;name&gt;.mp4</code> to that same folder. <code>rips</code> writes <code>frames/</code> and <code>speakers.json</code> and edits the transcript in place. <code>ripcap</code> writes a stitched transcript. Your original recording is never modified.</dd>
   <dt>Is it safe to re-run?</dt>
   <dd>Yes. <code>ripa</code> skips any recording that already has a transcript, so re-running a folder only picks up new files. Delete a transcript if you want it rebuilt.</dd>
   <dt>Why is there a repeated "Thank you" or "Amara.org" line in an old transcript?</dt>

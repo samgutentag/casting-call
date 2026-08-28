@@ -147,19 +147,36 @@ def strip_silent_lines(entries, spans_by_label):
     return out
 
 
-def collapse_repeats(entries):
-    """Collapse consecutive identical multi-word lines from the same speaker to
-    one. Whisper loops on non-speech by repeating the same phrase; genuine
-    back-channel ('Yeah.', 'Okay.') is single-word and is left alone. This is a
-    backstop for hallucinations that slip past the silence and VAD passes.
+# A run of identical lines this long can only be whisper looping, never a person.
+LOOP_RUN_MIN = 3
+
+
+def collapse_repeats(entries, drop_run_min=LOOP_RUN_MIN):
+    """Handle consecutive identical multi-word lines from the same speaker.
+
+    Whisper loops on non-speech by repeating one phrase. A short run is a person
+    repeating themselves (or a merge artifact) and collapses to a single line; a
+    run of `drop_run_min` or more is a hallucination loop and is dropped whole.
+
+    Keeping one line of a long loop, which is what this used to do, is worse than
+    either extreme: it leaves a sentence in the transcript that nobody said, with
+    nothing around it to mark it as junk. That is how a single "Thank you."
+    survived a 54-line loop on a real call and read as genuine.
+
+    Genuine back-channel ('Yeah.', 'Okay.') is single-word and never touched, so
+    a fast exchange of them is left intact.
     """
     out = []
-    for e in entries:
-        if out:
-            prev = out[-1]
-            if (prev['label'] == e['label']
-                    and _norm(prev['text']) == _norm(e['text'])
-                    and len(e['text'].split()) >= 2):
-                continue
-        out.append(e)
+    n = 0
+    while n < len(entries):
+        e = entries[n]
+        run = 1
+        if len(e['text'].split()) >= 2:
+            while (n + run < len(entries)
+                   and entries[n + run]['label'] == e['label']
+                   and _norm(entries[n + run]['text']) == _norm(e['text'])):
+                run += 1
+        if run < drop_run_min:
+            out.append(e)
+        n += run
     return out

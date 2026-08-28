@@ -2,9 +2,9 @@
 markers — fold Track-3 spoken markers into the transcript, inline.
 
 The rig records a third audio track (0:a:2) fed only by pre-canned marker
-phrases ("mark flag", "mark action", ...) triggered from the Stream Deck, routed
-so the far side never hears them. Whisper transcribes that track like any other;
-each recognized phrase becomes an inline marker line at its own timestamp.
+phrases ("mark topic", "mark action for me", ...) triggered from the Stream Deck,
+routed so the far side never hears them. Whisper transcribes that track like any
+other; each recognized phrase becomes an inline marker line at its own timestamp.
 
 No sidecar and no anchor: Track 3 shares the recording clock with the voice
 tracks, so a phrase at 14:32 on Track 3 lines up with 14:32 in the transcript
@@ -21,8 +21,30 @@ from pathlib import Path
 
 from casting_call.transcript import parse_transcript, render_transcript
 
-# Marker keywords, matched anywhere in the whisper output.
-MARKER_TYPES = ["flag", "important", "action", "question", "quote"]
+# Marker rules, in priority order: the first type whose keyword appears anywhere
+# in the whisper output wins. Order is load-bearing, not cosmetic. The two action
+# buttons speak "mark action for me" / "mark action for them", and both lines
+# contain "action", so the owner keywords must be consulted before the bare
+# "action" fallback or every press collapses into one bucket.
+#
+# "action" itself has no Stream Deck key. It exists only to catch a press where
+# whisper clipped the unstressed trailing word ("...for me" -> "..."), so a
+# degraded press surfaces as owner-unknown instead of being misfiled onto one
+# side of the call.
+MARKER_RULES = [
+    ("action-them", "for them"),
+    ("action-me", "for me"),
+    ("topic", "topic"),
+    ("important", "important"),
+    ("question", "question"),
+    ("quote", "quote"),
+    ("video", "video"),
+    ("action", "action"),
+]
+
+# Canonical type order, derived so it can never drift from the rules above.
+# digest.py groups by this.
+MARKER_TYPES = [mtype for mtype, _ in MARKER_RULES]
 
 # Label for embedded marker lines. Deliberately not "MARK" — that collides with a
 # real person named Mark once Caller lines get relabeled with names.
@@ -32,19 +54,20 @@ MARK_LABEL = "MARKER"
 def match_marker(text):
     """Return the marker type found in the line, or None.
 
-    Fuzzy on purpose: whisper may render "mark action item." or "Flag." so we
-    look for the keyword anywhere in the (lowercased) line.
+    Fuzzy on purpose: whisper may render "mark action item." or "Topic." so we
+    look for the keyword anywhere in the (lowercased) line, taking the first
+    rule that hits — see MARKER_RULES for why the order matters.
     """
     t = text.lower()
-    for mtype in MARKER_TYPES:
-        if mtype in t:
+    for mtype, keyword in MARKER_RULES:
+        if keyword in t:
             return mtype
     return None
 
 
 def markers_from_entries(track3_entries):
     """From parsed Track-3 entries, return [{'t','type','text'}] for recognized
-    phrases. `text` is the marker type, e.g. 'flag'."""
+    phrases. `text` is the marker type, e.g. 'topic'."""
     out = []
     for e in track3_entries:
         mtype = match_marker(e["text"])
@@ -57,8 +80,8 @@ def embed_markers(transcript_entries, markers):
     """Return transcript_entries with marker lines merged in by timestamp.
 
     Each marker becomes an entry labeled MARK so it renders as a normal
-    '[h:mm:ss] [MARKER] flag' line and reparses cleanly. Ties sort markers just
-    after a same-second line so a flag lands on the moment it was pressed for.
+    '[h:mm:ss] [MARKER] topic' line and reparses cleanly. Ties sort markers just
+    after a same-second line so a press lands on the moment it was pressed for.
     """
     combined = [dict(e, _m=0) for e in transcript_entries]
     combined += [{"t": m["t"], "label": MARK_LABEL, "text": m["text"], "_m": 1} for m in markers]

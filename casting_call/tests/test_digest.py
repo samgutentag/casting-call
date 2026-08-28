@@ -205,3 +205,186 @@ def test_resolve_artifacts_missing_returns_none(tmp_path):
     transcript.write_text("[0:00:05] [You] hi\n")
     audio, video = resolve_artifacts(transcript)
     assert audio is None and video is None
+
+
+# ---------------------------------------------------------------- sectioning
+
+def test_sections_split_at_topic_markers():
+    entries = parse_transcript(
+        "[0:00:10] [Caller] pricing talk\n"
+        "[0:05:00] [MARKER] topic\n"
+        "[0:06:00] [Caller] migration talk\n"
+        "[0:20:00] [MARKER] topic\n"
+        "[0:21:00] [Caller] wrap up\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    secs = d["sections"]
+    # a leading section for everything before the first topic press, then one
+    # section opened by each press
+    assert len(secs) == 3
+    # the leading section starts at the call's first line, not at a bare 0
+    assert [s["start"] for s in secs] == [10, 300, 1200]
+    assert secs[0]["end"] == 300
+    assert secs[1]["end"] == 1200
+    assert secs[2]["end"] is None  # runs to the end of the call
+
+
+def test_leading_section_is_dropped_when_topic_is_first():
+    entries = parse_transcript(
+        "[0:00:05] [MARKER] topic\n"
+        "[0:00:10] [Caller] straight into it\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert len(d["sections"]) == 1
+    assert d["sections"][0]["start"] == 5
+
+
+def test_no_topic_markers_gives_one_implicit_section():
+    # Every transcript recorded before the topic key existed lands here, so this
+    # has to render as an ordinary page rather than an empty one.
+    entries = parse_transcript(
+        "[0:01:00] [MARKER] action-me\n"
+        "[0:02:00] [Caller] talking\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert len(d["sections"]) == 1
+    assert d["sections"][0]["implicit"] is True
+    assert len(d["sections"][0]["items"]) == 1
+
+
+def test_items_land_in_their_section_and_stay_time_ordered():
+    entries = parse_transcript(
+        "[0:01:00] [MARKER] action-me\n"
+        "[0:05:00] [MARKER] topic\n"
+        "[0:06:00] [MARKER] question\n"
+        "[0:07:00] [You] action item, send the SOW\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    first, second = d["sections"]
+    assert [i["type"] for i in first["items"]] == ["action-me"]
+    assert [i["type"] for i in second["items"]] == ["question", "action"]
+    assert [i["t"] for i in second["items"]] == [360, 420]
+
+
+def test_items_carry_their_source_channel():
+    entries = parse_transcript(
+        "[0:01:00] [MARKER] action-me\n"
+        "[0:02:00] [You] action item, send the SOW\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    items = d["sections"][0]["items"]
+    assert items[0]["source"] == "marker"
+    assert items[1]["source"] == "aside"
+    assert items[1]["text"] == "action item, send the SOW"
+
+
+def test_topic_press_is_not_also_an_item_in_its_own_section():
+    # The press opens the section; listing it inside would double-count it.
+    entries = parse_transcript(
+        "[0:05:00] [MARKER] topic\n"
+        "[0:06:00] [MARKER] question\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert [i["type"] for i in d["sections"][0]["items"]] == ["question"]
+
+
+# ------------------------------------------------------------------- rollup
+
+def test_rollup_crosses_section_boundaries():
+    entries = parse_transcript(
+        "[0:01:00] [MARKER] action-me\n"
+        "[0:05:00] [MARKER] topic\n"
+        "[0:06:00] [MARKER] action-me\n"
+        "[0:07:00] [MARKER] action-them\n"
+        "[0:08:00] [MARKER] question\n"
+        "[0:09:00] [You] action item, send the SOW\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    r = d["rollup"]
+    # the spoken aside counts as one of Sam's actions: same intent, other channel
+    assert len(r["yours"]) == 3
+    assert len(r["theirs"]) == 1
+    assert len(r["questions"]) == 1
+    assert [i["t"] for i in r["yours"]] == [60, 360, 540]
+
+
+def test_rollup_counts_the_unowned_action_fallback_separately():
+    entries = parse_transcript(
+        "[0:01:00] [MARKER] action-me\n"
+        "[0:02:00] [MARKER] action\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert len(d["rollup"]["yours"]) == 1
+    assert len(d["rollup"]["unowned"]) == 1
+
+
+def test_groups_still_present_for_by_type_reading():
+    entries = parse_transcript("[0:01:00] [MARKER] question\n")
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert [g["type"] for g in d["groups"]] == ["question"]
+
+
+# ------------------------------------------------------- press/aside pairing
+
+def test_press_and_spoken_action_pair_into_one_item():
+    # Sam presses the key, then says the task into his muted mic. One task.
+    entries = parse_transcript(
+        "[0:02:35] [MARKER] action-me\n"
+        "[0:03:00] [You] action item, send the SOW friday\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    items = d["sections"][0]["items"]
+    assert len(items) == 1
+    assert len(d["rollup"]["yours"]) == 1
+    # the press owns the type (it knows the owner); the spoken line owns the words
+    assert items[0]["type"] == "action-me"
+    assert items[0]["source"] == "marker"
+    assert items[0]["text"] == "action item, send the SOW friday"
+    assert items[0]["paired"] is True
+
+
+def test_pairing_keeps_the_press_timestamp():
+    entries = parse_transcript(
+        "[0:02:35] [MARKER] action-me\n"
+        "[0:03:00] [You] action item, send the SOW\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert d["sections"][0]["items"][0]["t"] == 155
+
+
+def test_far_apart_action_and_press_stay_separate():
+    entries = parse_transcript(
+        "[0:02:00] [MARKER] action-me\n"
+        "[0:40:00] [You] action item, unrelated thing entirely\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert len(d["rollup"]["yours"]) == 2
+
+
+def test_spoken_note_does_not_pair_with_an_action_press():
+    entries = parse_transcript(
+        "[0:02:35] [MARKER] action-me\n"
+        "[0:02:40] [You] note that the nav labels are stale\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    items = d["sections"][0]["items"]
+    assert [i["type"] for i in items] == ["action-me", "note"]
+
+
+def test_one_press_pairs_with_only_one_aside():
+    entries = parse_transcript(
+        "[0:02:00] [MARKER] action-me\n"
+        "[0:02:05] [You] action item, the first thing\n"
+        "[0:02:10] [You] action item, a second separate thing\n"
+    )
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    assert len(d["rollup"]["yours"]) == 2
+    assert d["sections"][0]["items"][0]["text"] == "action item, the first thing"
+
+
+def test_unpaired_press_keeps_null_text():
+    entries = parse_transcript("[0:02:00] [MARKER] action-me\n")
+    d = digest.build_digest_from_entries(entries, window_seconds=30, video_path=None)
+    item = d["sections"][0]["items"][0]
+    assert item["text"] is None
+    assert item["paired"] is False

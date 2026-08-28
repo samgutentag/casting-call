@@ -24,10 +24,12 @@ def test_match_marker_falls_back_when_owner_is_clipped():
     assert match_marker("mark action item") == "action"
 
 
-def test_match_marker_retired_keywords_no_longer_match():
-    assert match_marker("mark flag") is None
-    assert match_marker("mark follow up") is None
-    assert match_marker("mark follow-up") is None
+def test_retired_keywords_have_no_button_but_still_parse():
+    # Superseded by topic and action-them, so nothing produces these now. They
+    # stay recognized because old recordings still contain them; see
+    # test_retired_keywords_still_parse_from_old_recordings for why that matters.
+    assert match_marker("mark flag") == "flag"
+    assert match_marker("mark follow up") == "follow"
 
 
 def test_match_marker_handles_remaining_keywords():
@@ -79,3 +81,18 @@ def test_embed_marker_lands_after_same_second_speech():
 def test_no_markers_is_noop():
     main = parse_transcript("[0:00:05] [You] hi\n")
     assert embed_markers(main, []) == main
+
+
+def test_retired_keywords_still_parse_from_old_recordings():
+    # The buttons are gone, but the audio on calls recorded before 2026-08-28
+    # still says these. Re-deriving an old marker track has to keep them or the
+    # presses are silently dropped: greg_sync lost two that way.
+    assert match_marker("mark flag") == "flag"
+    assert match_marker("Mark Flagg.") == "flag"
+    assert match_marker("mark follow up") == "follow"
+    assert match_marker("mark follow-up") == "follow"
+
+
+def test_current_keywords_still_win_over_the_legacy_ones():
+    assert match_marker("mark action for them") == "action-them"
+    assert match_marker("mark topic") == "topic"

@@ -40,6 +40,12 @@ MARKER_RULES = [
     ("quote", "quote"),
     ("video", "video"),
     ("action", "action"),
+    # Retired buttons. No key produces these any more, but every call recorded
+    # before 2026-08-28 has them on its Track 3, and re-deriving one of those
+    # tracks drops the press entirely if nothing here matches. Last in the list
+    # so they can never shadow a current keyword.
+    ("flag", "flag"),
+    ("follow", "follow"),
 ]
 
 # Canonical type order, derived so it can never drift from the rules above.

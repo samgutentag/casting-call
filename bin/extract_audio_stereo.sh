@@ -345,20 +345,25 @@ for input_file in "${recordings[@]}"; do
         --silent-you "$spans_you" --silent-caller "$spans_caller" \
         | sed 's/^/  → /' )
 
-    # Track 3 (0:a:2): pre-canned marker phrases, if the rig recorded them. Transcribe
-    # that track (do NOT silence-skip it: it is mostly silence with short phrases) and
-    # fold recognized markers into the transcript inline. Non-marker whisper noise on
-    # the track is ignored, since only known marker keywords match.
+    # Track 3 (0:a:2): pre-canned marker phrases, if the rig recorded them.
+    #
+    # Do NOT hand the whole track to whisper. It is ~99% silence with short clips
+    # scattered through it, and whisper merges the lot into one segment stamped at
+    # the first sound: on a 31-minute call with 17 presses that produced ONE marker
+    # at 0:00:04 and threw every other timestamp away. Timestamps are the whole
+    # point of the rig, so that failure is total even though the words survive.
+    #
+    # marker_track finds the presses with silencedetect (the track is silence by
+    # construction, so this is exact) and gives whisper one short slice per press,
+    # where there is nothing to merge with.
     if has_stream "$input_file" "a:2"; then
         echo "  → Parsing Track 3 markers..."
-        tmp_t3_srt="/tmp/whisper_${filename}_t3.srt"
-        GGML_METAL_PATH_RESOURCES="$WHISPER_METAL_RESOURCES" \
-        "$WHISPER_BIN" --model "$WHISPER_MODEL" -mc 0 "${VAD_FLAG[@]}" --output-srt \
-            --output-file "/tmp/whisper_${filename}_t3" "$tmp_t3" 2>/dev/null \
-            | whisper_progress "markers" "$(get_duration "$tmp_t3")"
-        merge_srt "$tmp_t3_srt" "/dev/null" "T3" "-" "$parts_dir/markers.txt" >/dev/null
-        ( cd "$REPO_DIR" && python3 -m casting_call.markers "$txt_out" "$parts_dir/markers.txt" | sed 's/^/  → /' )
-        rm -f "$tmp_t3_srt"
+        ( cd "$REPO_DIR" && python3 -m casting_call.marker_track \
+            "$tmp_t3" "$txt_out" \
+            --whisper-bin "$WHISPER_BIN" \
+            --model "$WHISPER_MODEL" \
+            --metal-resources "$WHISPER_METAL_RESOURCES" \
+            --parts-out "$parts_dir/markers.txt" | sed 's/^/  → /' )
     fi
 
     # Relabel Caller lines from a caption-derived speaker timeline, if present.

@@ -110,7 +110,7 @@ cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pr
   <dt>You / Caller</dt>
   <dd>The two speaker labels in a fresh transcript. <code>You</code> is your mic (Track 1). <code>Caller</code> is everyone on the far side (Track 2), lumped together until <code>rips</code> puts real names on them.</dd>
   <dt>Marker</dt>
-  <dd>A moment you flagged during the call by pressing a Stream Deck button, which played a short "mark flag / action / question / important / quote" sound onto Track 3. In the transcript it becomes a <code>[MARKER]</code> line at that timestamp. The label is <code>MARKER</code>, not <code>MARK</code>, so it never collides with a real person named Mark.</dd>
+  <dd>A moment you flagged during the call by pressing a Stream Deck button, which played a short sound onto Track 3. Seven buttons: <strong>topic</strong> (the conversation moved on), <strong>action for me</strong>, <strong>action for them</strong>, <strong>important</strong>, <strong>question</strong>, <strong>quote</strong>, and <strong>video</strong> (something on screen worth a screenshot). In the transcript each becomes a <code>[MARKER]</code> line at that timestamp, tagged with its type. The label is <code>MARKER</code>, not <code>MARK</code>, so it never collides with a real person named Mark.</dd>
   <dt>Transcript</dt>
   <dd>A plain-text file of <code>[h:mm:ss] [Label] text</code> lines, sorted by time. Everything downstream reads and writes this one format.</dd>
   <dt>Dropout</dt>
@@ -157,7 +157,7 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
     <text x="412" y="60" class="svg-label" font-size="9.5" fill="#888">name/name.txt</text>
     <text x="412" y="80"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:11] [You] we'll go here</text>
     <text x="412" y="98"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:12] [Caller] send the deck</text>
-    <text x="412" y="116" class="svg-label" font-size="9.5" fill="#b2741a">[0:00:12] [MARKER] action</text>
+    <text x="412" y="116" class="svg-label" font-size="9.5" fill="#b2741a">[0:00:12] [MARKER] action-me</text>
     <text x="412" y="134" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:15] [You] sounds good</text>
     <text x="412" y="152" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:18] [Caller] talk soon</text>
 

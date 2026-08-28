@@ -9,7 +9,8 @@ tracks and run Whisper" and has grown into three capabilities that cover each wa
 recording can be useful (or broken).
 
 **New here or coming back cold?** Read the [user guide](docs/user-guide.html) in a
-browser. It is written to be read with zero prior knowledge, covers every command and
+browser. Setting the rig up on a new machine is the [setup guide](docs/setup-guide.html).
+The user guide is written to be read with zero prior knowledge, covers every command and
 constant, and has animated diagrams of the three core mechanisms.
 
 ## The three capabilities
@@ -27,6 +28,32 @@ an interactive review step for names it will not guess at.
 disk (it happens; ask me how I know, twice), the captions burned into the video are the
 words. The stitcher OCRs every caption frame and merges the rolling, overlapping text
 into one attributed transcript.
+
+## Markers
+
+Seven keys on a Stream Deck, each wired to a silent audio clip that lands on Track 3.
+Press one during a call and it shows up in the transcript as a `[MARKER]` line at that
+timestamp. Nobody on the call hears anything, and there is no syncing step, because all
+three tracks share one clock.
+
+| Key | Type | Press it when |
+|---|---|---|
+| Topic Switch | `topic` | the conversation moves to a new subject |
+| Action For Me | `action-me` | you just picked up something to do |
+| Action For Them | `action-them` | the far side owes you something |
+| Important | `important` | it matters and fits nothing else |
+| Question | `question` | you have a follow-up (say it into your muted mic right after) |
+| Quote | `quote` | worth repeating verbatim |
+| Video | `video` | something on screen worth a screenshot |
+
+Both action clips say the word "action", so the parser checks "for them" and "for me"
+before falling back to a bare `action` type. That fallback has no key. It only catches a
+press where Whisper ate the trailing word, and it surfaces as owner-unknown instead of
+landing on the wrong person's list (which is the failure you would never notice).
+
+Wiring the OBS sources and the Stream Deck keys is in the
+[setup guide](docs/setup-guide.html), including a migration section if you already ran the
+old flag/action/follow set.
 
 ## Commands
 
@@ -46,7 +73,7 @@ The aliases live in my gutils shell config, not here. Every script works without
 # ...record the call with OBS (multi-track: mic, far side, markers)...
 ripa ~/calls/2026-07-06                            # transcribe everything in the folder
 rips recording.mkv --region 120,1850,900,180 \
-     --transcript transcripts/recording.txt        # put real names on the Caller lines
+     --transcript recording/recording.txt          # put real names on the Caller lines
 ```
 
 And when the far-side audio never made it to disk:
@@ -86,8 +113,10 @@ casting_call/      the Python package
   sample/locate/read/roster/timeline/transcript/review/coverage   speaker layer
   stitch.py        rolling-caption stitcher + CLI
   markers.py       Track 3 marker phrases folded into the transcript
+  digest.py        marker presses grouped into a per-call digest (JSON)
   tests/           pytest suite (fast, no fixtures on disk)
 docs/user-guide.html   the real documentation; start there
+docs/setup-guide.html  building the OBS + Stream Deck rig on a new machine
 ```
 
 Everything runs locally. No accounts, no uploads, and anything the tool cannot

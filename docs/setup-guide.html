@@ -191,10 +191,21 @@ cp speakers_roster.example.json speakers_roster.json
 # then edit speakers_roster.json: set "self" to your name, list the people you call
 
 # Marker clips (regenerated here; not committed)
+# name|phrase, because the two action clips say more than their filename.
+# The 0.25s of trailing silence keeps whisper from clipping the last word
+# ("...for me" / "...for them") at a segment boundary.
 mkdir -p obs/marker-clips
-for p in flag important action question quote; do
-  say -o /tmp/_m.aiff "mark $p"
-  ffmpeg -loglevel error -i /tmp/_m.aiff -ar 16000 -ac 1 -c:a pcm_s16le "obs/marker-clips/mark-$p.wav" -y
+for spec in "topic|mark topic" \
+            "action-me|mark action for me" \
+            "action-them|mark action for them" \
+            "important|mark important" \
+            "question|mark question" \
+            "quote|mark quote" \
+            "video|mark video"; do
+  name="${spec%%|*}"; phrase="${spec#*|}"
+  say -o /tmp/_m.aiff "$phrase"
+  ffmpeg -loglevel error -i /tmp/_m.aiff -ar 16000 -ac 1 -c:a pcm_s16le \
+    -af "apad=pad_dur=0.25" "obs/marker-clips/mark-$name.wav" -y
 done
 rm -f /tmp/_m.aiff
 
@@ -247,21 +258,59 @@ alone.
 
 <h2>Part 3: The marker track <span class="tag gui">in the app</span></h2>
 
-<p>This is the piece that makes markers work without any syncing. Five clips, each on its own
+<p>This is the piece that makes markers work without any syncing. Seven clips, each on its own
 media source, all routed to Track 3, none of them ever heard by anyone live.</p>
 
+<p><strong>Already have the old five- or seven-key rig?</strong> Do not rebuild it. Skip to
+<a href="#migrate">Migrating an existing rig</a> below, which is three renames and nothing else.</p>
+
+<p>Build each source exactly once, then repeat six times. The source names below are not cosmetic:
+Stream Deck binds its keys to the source <em>name</em>, so a typo here means a dead key later.</p>
+
 <ol>
-<li>Add five <strong>Media Source</strong> items to the scene, one per clip in
-<code>obs/marker-clips/</code> (<code>mark-flag.wav</code> through <code>mark-quote.wav</code>). In
-each media source, <strong>uncheck Loop</strong> and <strong>check "Restart playback when source
-becomes active."</strong></li>
-<li>In <strong>Advanced Audio Properties</strong>, for all five marker sources:
+<li>In the <strong>Sources</strong> panel, click <strong>+</strong> and choose
+<strong>Media Source</strong>.</li>
+<li>Leave <strong>Create new</strong> selected. Type the source name from the table below, exactly
+as written. Click <strong>OK</strong>.</li>
+<li>In the properties window that opens:
   <ul>
-  <li>Tracks: <strong>3 only</strong> (uncheck 1 and 2 so markers never touch the voice tracks).</li>
-  <li>Audio Monitoring: <strong>Monitor Off</strong>. This is what keeps the clip out of your
-  headphones and, more importantly, out of anything Meet can pick up. It still records to Track 3.</li>
+  <li><strong>Local File</strong>: click Browse and pick the matching <code>.wav</code> from
+  <code>obs/marker-clips/</code>.</li>
+  <li><strong>Uncheck Loop.</strong> If this stays checked the clip repeats for the whole call and
+  every marker in the transcript is garbage.</li>
+  <li><strong>Check "Restart playback when source becomes active."</strong></li>
+  <li>Leave everything else at its default. Click <strong>OK</strong>.</li>
   </ul>
 </li>
+<li>Repeat for all seven rows.</li>
+</ol>
+
+<table>
+<tr><th>Source name (type it exactly)</th><th>File to browse to</th></tr>
+<tr><td><code>Topic Switch</code></td><td><code>obs/marker-clips/mark-topic.wav</code></td></tr>
+<tr><td><code>Action For Me</code></td><td><code>obs/marker-clips/mark-action-me.wav</code></td></tr>
+<tr><td><code>Action For Them</code></td><td><code>obs/marker-clips/mark-action-them.wav</code></td></tr>
+<tr><td><code>Mark Important</code></td><td><code>obs/marker-clips/mark-important.wav</code></td></tr>
+<tr><td><code>Mark Question</code></td><td><code>obs/marker-clips/mark-question.wav</code></td></tr>
+<tr><td><code>Mark Quote</code></td><td><code>obs/marker-clips/mark-quote.wav</code></td></tr>
+<tr><td><code>Mark Video</code></td><td><code>obs/marker-clips/mark-video.wav</code></td></tr>
+</table>
+
+<p>Now route all seven to Track 3 in one pass:</p>
+
+<ol>
+<li>Right-click any source, choose <strong>Advanced Audio Properties</strong>. Every source in the
+scene is listed as a row.</li>
+<li>For each of the seven marker rows:
+  <ul>
+  <li><strong>Tracks</strong>: check <strong>3</strong>, and uncheck <strong>1</strong> and
+  <strong>2</strong>. Markers must never touch the voice tracks.</li>
+  <li><strong>Audio Monitoring</strong>: <strong>Monitor Off</strong>. This is what keeps the clip
+  out of your headphones and, more importantly, out of anything Meet can pick up. It still records
+  to Track 3.</li>
+  </ul>
+</li>
+<li>Close the window. There is no Save button; the settings apply as you set them.</li>
 </ol>
 
 <blockquote>
@@ -274,17 +323,101 @@ your mic or Meet. So the marker is silent to you and to the caller, and still la
 
 <ol>
 <li>Open the Stream Deck app and install the official <strong>OBS Studio</strong> plugin from its
-Marketplace. In OBS, enable <strong>Tools, WebSocket Server Settings, Enable WebSocket server</strong>
-so Stream Deck can talk to it.</li>
+Marketplace.</li>
+<li>In OBS, enable <strong>Tools, WebSocket Server Settings, Enable WebSocket server</strong> so
+Stream Deck can talk to it. If the Stream Deck plugin shows a red or grey status dot, it is this
+setting.</li>
 <li><strong>Start / Stop.</strong> Drag the OBS <strong>Start Recording</strong> action onto a key,
 and <strong>Stop Recording</strong> onto another.</li>
-<li><strong>Five marker keys.</strong> Use the OBS plugin's <strong>Media Source Control</strong>
-action (search "media" in the actions list), one per key. Set each key's <strong>Media Source</strong>
-to the matching source (<code>Mark Flag</code>, <code>Mark Important</code>, <code>Mark Action</code>,
-<code>Mark Question</code>, <code>Mark Quote</code>) and its action to <strong>Restart</strong>, so
-every press plays the clip from the top. This is the action that works; "Source Visibility" does not
-trigger playback, so do not use it here.</li>
+<li><strong>The seven marker keys.</strong> For each one:
+  <ul>
+  <li>Search <strong>media</strong> in the actions list and drag <strong>Media Source Control</strong>
+  onto an empty key.</li>
+  <li><strong>Media Source</strong>: pick the source name from the table below. If the dropdown is
+  empty, OBS is not connected; fix step 2 first.</li>
+  <li><strong>Action</strong>: <strong>Restart</strong>. This is the one that works. "Source
+  Visibility" does not trigger playback, so do not use it here.</li>
+  <li><strong>Title</strong>: the key label from the table, so you can read the deck mid-call
+  without thinking.</li>
+  </ul>
+</li>
 </ol>
+
+<table>
+<tr><th>Key label</th><th>Media Source</th><th>Action</th></tr>
+<tr><td>Topic</td><td><code>Topic Switch</code></td><td>Restart</td></tr>
+<tr><td>Me</td><td><code>Action For Me</code></td><td>Restart</td></tr>
+<tr><td>Them</td><td><code>Action For Them</code></td><td>Restart</td></tr>
+<tr><td>Important</td><td><code>Mark Important</code></td><td>Restart</td></tr>
+<tr><td>Question</td><td><code>Mark Question</code></td><td>Restart</td></tr>
+<tr><td>Quote</td><td><code>Mark Quote</code></td><td>Restart</td></tr>
+<tr><td>Video</td><td><code>Mark Video</code></td><td>Restart</td></tr>
+</table>
+
+<p>Put <strong>Me</strong> and <strong>Them</strong> next to each other on the deck. They are the
+pair you will fumble between under pressure, and a wrong press puts someone else's task on your
+list.</p>
+
+<h3>What the seven keys mean</h3>
+
+<table>
+<tr><th>Key</th><th>Clip says</th><th>Transcript type</th><th>Press it when</th></tr>
+<tr><td>Topic Switch</td><td>"mark topic"</td><td><code>topic</code></td><td>the conversation moves to a new subject. These are the dividers the digest reads to cut the call into sections.</td></tr>
+<tr><td>Action For Me</td><td>"mark action for me"</td><td><code>action-me</code></td><td>you just picked up something you have to do.</td></tr>
+<tr><td>Action For Them</td><td>"mark action for them"</td><td><code>action-them</code></td><td>someone on the far side owes you something, or you need to chase it later.</td></tr>
+<tr><td>Mark Important</td><td>"mark important"</td><td><code>important</code></td><td>it matters and does not fit any other key.</td></tr>
+<tr><td>Mark Question</td><td>"mark question"</td><td><code>question</code></td><td>you have a follow-up question. Say it into your muted mic right after the press so the digest captures the wording.</td></tr>
+<tr><td>Mark Quote</td><td>"mark quote"</td><td><code>quote</code></td><td>somebody said something worth repeating verbatim.</td></tr>
+<tr><td>Mark Video</td><td>"mark video"</td><td><code>video</code></td><td>something is on screen worth keeping. This is the only key that makes the digest pull a screenshot.</td></tr>
+</table>
+
+<blockquote>
+<strong>The eighth type you never press.</strong> Both action clips say "action", so the parser
+checks "for them" and "for me" before it falls back to a bare <code>action</code> type. That
+fallback has no key. It only catches a press where whisper dropped the trailing word, and it shows
+up in the digest as owner-unknown rather than being quietly filed onto the wrong side.
+</blockquote>
+
+<h3 id="migrate">Migrating an existing rig</h3>
+
+<p>If you already ran the flag / important / action / question / quote / video / follow set, you do
+not add or delete a single source. Four of the seven are unchanged, and the other three are a rename
+plus a new file. The clips were regenerated in place, so
+<code>mark-important.wav</code>, <code>mark-question.wav</code>, <code>mark-quote.wav</code> and
+<code>mark-video.wav</code> keep their names and their sources need no attention at all.</p>
+
+<p>Regenerate the clips first (the loop in Part 1), then in OBS:</p>
+
+<table>
+<tr><th>Old source</th><th>Rename to</th><th>Repoint Local File to</th></tr>
+<tr><td><code>Mark Flag</code></td><td><code>Topic Switch</code></td><td><code>mark-topic.wav</code></td></tr>
+<tr><td><code>Mark Action</code></td><td><code>Action For Me</code></td><td><code>mark-action-me.wav</code></td></tr>
+<tr><td><code>Mark Follow Up</code></td><td><code>Action For Them</code></td><td><code>mark-action-them.wav</code></td></tr>
+</table>
+
+<ol>
+<li>Double-click the old source in the <strong>Sources</strong> panel to open its properties, click
+<strong>Browse</strong>, and pick the new <code>.wav</code>. Click <strong>OK</strong>.</li>
+<li>Right-click the source, choose <strong>Rename</strong>, and type the new name exactly.</li>
+<li>Repeat for the other two rows.</li>
+<li>The three old files (<code>mark-flag.wav</code>, <code>mark-action.wav</code>,
+<code>mark-follow.wav</code>) are gone after a regenerate. Nothing points at them any more.</li>
+</ol>
+
+<blockquote>
+<strong>Renaming in OBS can orphan the Stream Deck key.</strong> The plugin binds to the source
+name, and it does not reliably follow a rename. After the three renames, open each of those three
+keys in the Stream Deck app and re-pick the <strong>Media Source</strong> from the dropdown, even if
+it looks correct. Then press all seven keys once and confirm in Part 5 that seven marker lines come
+back with seven distinct types.
+</blockquote>
+
+<blockquote>
+<strong>Old transcripts are not rewritten.</strong> Anything recorded before this change still has
+<code>[MARKER] flag</code> and <code>[MARKER] follow</code> lines in it. The parser no longer
+produces those types, and the digest will list them in its trailing "unrecognized" group rather than
+dropping them. That is deliberate: old calls stay readable, and nothing silently disappears.
+</blockquote>
 
 <blockquote>
 <strong>The one gotcha that will silently eat your markers:</strong> the marker sources live on
@@ -297,8 +430,10 @@ clips play, and none of it ends up in the file. Sanity check a test recording wi
 <h2>Part 5: Prove it works before a real call <span class="tag cli">terminal</span> + <span class="tag gui">in the app</span></h2>
 
 <ol>
-<li>In OBS, press <strong>Start</strong>, talk for a few seconds, press a couple of marker keys,
-then press <strong>Stop</strong>. Move the resulting <code>.mkv</code> into a folder, say
+<li>In OBS, press <strong>Start</strong>, talk for a few seconds, then press <strong>all seven
+marker keys</strong> with a beat between each, and press <strong>Stop</strong>. Press all seven, not
+a couple: the point of the test is that each key produces a <em>different</em> type, which is
+exactly what a mis-bound key breaks. Move the resulting <code>.mkv</code> into a folder, say
 <code>~/calls/test/</code>.</li>
 <li>Confirm the file really has three audio tracks:
 <pre><code>ffprobe -v error -show_entries stream=index,codec_type -of csv ~/calls/test/*.mkv
@@ -307,12 +442,20 @@ then press <strong>Stop</strong>. Move the resulting <code>.mkv</code> into a fo
 <li>Run the pipeline and read the result:
 <pre><code>cd ~/Developer/casting-call
 bash bin/extract_audio_stereo.sh ~/calls/test
-cat ~/calls/test/transcripts/*.txt</code></pre>
+cat ~/calls/test/*/*.txt</code></pre>
 You should see <code>[You]</code> and <code>[Caller]</code> lines with <code>[MARKER]</code> lines
 sitting inline wherever you pressed a key.</li>
+<li>Check that all seven types came back distinct:
+<pre><code>grep '\[MARKER\]' ~/calls/test/*/*.txt | awk '{print $NF}' | sort | uniq -c
+# expect exactly one each of:
+#   action-me  action-them  important  question  quote  topic  video</code></pre>
+A missing type means that key is bound to the wrong source or set to something other than Restart.
+A stray <code>action</code> with no owner means whisper clipped the trailing word on that press;
+re-record that clip with a longer trailing pad.</li>
 </ol>
 
-<p>If the markers land in the right place and nobody heard them during the test, the rig is done.</p>
+<p>If all seven types come back distinct, they land in the right place, and nobody heard them during
+the test, the rig is done.</p>
 
 <h2>Part 6: The daily loop</h2>
 

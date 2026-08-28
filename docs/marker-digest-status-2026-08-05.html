@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marker Digest: Status and the Travel Problem</title>
+<style>
+  /* ===== THEME CHROME — DO NOT EDIT (keep identical across all docs) ===== */
+  :root {
+    --bg: #fff;
+    --text: #1a1a1a;
+    --heading: #111;
+    --muted: #555;
+    --muted2: #444;
+    --faint: #666;
+    --rule: #ddd;
+    --dot: #e2e2e2;
+    --code-bg: #f2f2f2;
+    --setup-bg: #f6f6f4;
+    --setup-border: #e0e0dc;
+    --watch-bg: #fbf7ec;
+    --watch-border: #b58900;
+    --btn-bg: #f0f0ee;
+    --btn-border: #ccc;
+    --accent: #c9a227;
+  }
+  html[data-theme="dark"] {
+    --bg: #17191d;
+    --text: #cfd2d6;
+    --heading: #f1f2f4;
+    --muted: #9aa0a6;
+    --muted2: #b3b8bd;
+    --faint: #888e94;
+    --rule: #34383e;
+    --dot: #2b2f34;
+    --code-bg: #262a30;
+    --setup-bg: #1e2126;
+    --setup-border: #34383e;
+    --watch-bg: #241f14;
+    --watch-border: #c9a227;
+    --btn-bg: #23262b;
+    --btn-border: #3a3f45;
+  }
+  #theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #theme-toggle:hover { border-color: var(--faint); }
+  /* ===== END THEME CHROME ===== */
+
+  /* ===== BASE DOCUMENT STYLE (Sam's standing conventions) ===== */
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 46rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+    background: var(--bg);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  h1, h2, h3 {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height: 1.25;
+    color: var(--heading);
+  }
+  h1 { font-size: 1.7rem; margin: 0 0 0.25rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule);
+    page-break-after: avoid;
+  }
+  h3 { font-size: 1.02rem; margin: 1.5rem 0 0.4rem; }
+  p, li { color: var(--text); }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); }
+  code {
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1.1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 3px solid var(--watch-border);
+    background: var(--watch-bg);
+    margin: 0.8rem 0;
+    padding: 0.7rem 0.9rem;
+    page-break-inside: avoid;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--rule); padding: 0.45rem 0.7rem; text-align: left; font-size: 0.95rem; }
+  th { font-family: system-ui, sans-serif; }
+  .meta { margin-top: 2.5rem; color: var(--faint); font-size: 0.85rem; font-family: system-ui, sans-serif; }
+  /* ===== END BASE ===== */
+
+  /* ===== PRINT: force clean light, hide the toggle ===== */
+  @media print {
+    :root { --bg:#fff; --text:#1a1a1a; --heading:#111; --setup-bg:#f6f6f4; --watch-bg:#fbf7ec; --code-bg:#f2f2f2; }
+    body { margin: 0; font-size: 12pt; }
+    blockquote, pre { background: none; }
+    #theme-toggle { display: none; }
+  }
+
+  /* ===== Document-specific styles may be ADDED below this line ===== */
+  .done { color: var(--watch-border); font-weight: 600; }
+  .todo { color: var(--faint); }
+</style>
+</head>
+<body>
+
+<button id="theme-toggle" type="button" aria-label="Toggle dark mode">Light mode</button>
+
+<!-- ===== CONTENT START ===== -->
+<h1>Marker Digest: Status and the Travel Problem</h1>
+<p class="meta">2026-08-05 · casting-call</p>
+
+<p>Two pieces of work landed since we started: two new Stream Deck markers, and a whole new skill that turns those marker presses into a browsable HTML digest of a call. Both are built and tested. Neither is committed yet. Below is where each stands, what is left, and the thing you actually asked about: how to mark a call when the physical Stream Deck is sitting on your desk at home.</p>
+
+<h2>Where this is</h2>
+<table>
+  <tr><th>Piece</th><th>State</th><th>Committed?</th></tr>
+  <tr><td>New markers: <code>video</code> and <code>follow</code></td><td class="done">Built, 6 tests pass</td><td class="todo">No</td></tr>
+  <tr><td><code>casting_call/digest.py</code> + tests</td><td class="done">Built, full suite 74 pass</td><td class="todo">No</td></tr>
+  <tr><td><code>marker-digest</code> skill</td><td class="done">Live (symlinked, shows in skill list)</td><td class="todo">No</td></tr>
+  <tr><td>Design spec</td><td class="done">Written</td><td class="todo">No (.md only, HTML copy is gitignored)</td></tr>
+</table>
+
+<h2>What got built</h2>
+<p>The deck went from five markers to seven. <code>video</code> flags a moment where what is on screen matters, and <code>follow</code> is the "someone else needs to do this" counterpart to <code>action</code> (which stays yours). Both are wired through <code>markers.py</code>, the setup guide, and fresh WAV clips.</p>
+
+<p>The new part is the digest. <code>digest.py</code> reads a finished transcript, pulls out every <code>[MARKER]</code> line, grabs the roughly 30 seconds of conversation around each press, and for <code>video</code> markers seeks a single screenshot out of the recording with ffmpeg. It hands that off as JSON to the <code>marker-digest</code> skill, which writes a short call summary, a one line note per marker, and renders a self contained HTML page: a collapsible section per marker type, click a timestamp to jump the audio, screenshots embedded inline. It opens in Chrome next to the transcript.</p>
+
+<p>To run it once you have a real transcript:</p>
+<pre><code>/marker-digest ~/Developer/.../transcripts/&lt;name&gt;.txt</code></pre>
+
+<h2>Loose ends</h2>
+<ol>
+  <li><strong>First real screenshot test.</strong> The ffmpeg frame grab is unit tested against a fake, but it has never run on an actual recording. Your live call is the first genuine test of the screenshot path, so that is the most likely spot to need a tweak (seek accuracy, scaling).</li>
+  <li><strong>Nothing is committed.</strong> The button change, the digest feature, and the skill are all sitting uncommitted across <code>casting-call</code> and <code>gutils</code>. I held off because committing fires your <code>blog-draft</code> workflow and pushes <code>gutils</code> to your other machines, and you were not around to review.</li>
+  <li><strong>One config conflict to settle.</strong> You said always open HTML in Chrome. Your global config still says spec review copies open in Safari. I followed Chrome and left a note. Worth picking one.</li>
+</ol>
+
+<h2>Recording without the deck</h2>
+<p>Here is the reframe that makes this easy: your Stream Deck never actually made the marker. Pressing a key tells OBS to restart a media source, which plays a silent clip onto Track 3. The deck is just one way to hit play. So the question is not "how do I replace the deck," it is "what else can tell OBS to play that clip." OBS already answers that. The WebSocket server you turned on for the Stream Deck plugin (Part 4 of the setup guide) takes the same command from anything on your network.</p>
+
+<p>That opens up four avenues, cheapest effort first:</p>
+
+<table>
+  <tr><th>Avenue</th><th>What it is</th><th>Cost</th><th>Needs</th></tr>
+  <tr>
+    <td><a href="https://www.elgato.com/us/en/s/stream-deck-mobile">Stream Deck Mobile</a></td>
+    <td>Mirrors your existing deck profile onto your iPhone. The exact same OBS actions fire.</td>
+    <td>Free for 6 keys, or Pro at $49.99 lifetime for up to 64 (<a href="https://www.corsair.com/newsroom/press-release/stream-deck-goes-free-elgato-announces-groundbreaking-changes-to-mobile-app">it went free in 2023</a>)</td>
+    <td>Stream Deck app running on the Mac, phone on the same network</td>
+  </tr>
+  <tr>
+    <td><a href="https://bitfocus.io/companion">Bitfocus Companion</a></td>
+    <td>Open source deck emulator with native OBS control and a web button page you open in any phone or laptop browser.</td>
+    <td>Free</td>
+    <td>Runs on the Mac, rebuild the 7 buttons once</td>
+  </tr>
+  <tr>
+    <td>Build it into casting-call</td>
+    <td>A small <code>mark</code> trigger in the repo that sends OBS the restart command directly. Either laptop keyboard shortcuts or a tiny local web page with 7 buttons you open on your phone.</td>
+    <td>Free (some build time)</td>
+    <td>Just the laptop, OBS WebSocket already on</td>
+  </tr>
+  <tr>
+    <td>Speak it while muted</td>
+    <td>Mute yourself, say "mark video." It lands on your mic track, not Track 3, so the caller does not hear it. Teach <code>markers.py</code> to also read spoken markers off your own track.</td>
+    <td>Free</td>
+    <td>Nothing, but mute discipline and Whisper cooperation</td>
+  </tr>
+</table>
+
+<h3>What I would do</h3>
+<p>For a trip that is coming up soon, grab <a href="https://apps.apple.com/us/app/elgato-stream-deck-mobile/id1440014184">Stream Deck Mobile</a>. It is a five minute setup and zero code, and your seven markers already exist as a profile to mirror (the free tier only gives 6 keys on a page, so either spill onto a second page or take the lifetime Pro unlock). Bring the laptop, keep the phone on the hotel wifi, done.</p>
+
+<p>For the durable answer, build the third option: a little web page served from casting-call with the 7 marker buttons, that talks to OBS over the WebSocket that is already running. It needs nothing but the laptop and a browser, it works whether the phone is around or not, and it lives in the same repo as everything else instead of depending on an Elgato account or a second app. One caveat worth calling out now: it needs the OBS WebSocket password, and that should stay local and gitignored (the way <code>speakers_roster.json</code> already is), not committed.</p>
+
+<p>Companion is the middle path if you want a polished no code tool and would rather not build or subscribe. It is genuinely good. It is just one more piece of software to carry when a single HTML page would do the same job.</p>
+
+<p>The muted-speech fallback is not a primary plan, but it is a nice safety net and it overlaps with what <code>process-transcript</code> already does with your spoken asides. Worth wiring up eventually so a marker is never truly unavailable.</p>
+
+<h2>Wrap Up</h2>
+<p>The digest is ready to point at your first real transcript, which is also its first honest test. The travel question has a clean answer because the marker was always an OBS command, not a hardware feature. Mobile app now to stay unblocked, a small in-repo web trigger as the real fix. Say the word on committing and I will split it into sensible commits across both repos.</p>
+
+<p class="meta">Sources: <a href="https://www.corsair.com/newsroom/press-release/stream-deck-goes-free-elgato-announces-groundbreaking-changes-to-mobile-app">Elgato / Corsair on the free mobile tier</a>, <a href="https://www.elgato.com/us/en/s/stream-deck-mobile">Stream Deck Mobile</a>, <a href="https://bitfocus.io/companion">Bitfocus Companion</a>.</p>
+<!-- ===== CONTENT END ===== -->
+
+<script>
+  /* ===== THEME SCRIPT — DO NOT EDIT (keep identical across all docs) ===== */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var stored = null;
+    try { stored = localStorage.getItem('doc-theme'); } catch (e) {}
+    var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (systemDark ? 'dark' : 'light');
+
+    function apply(t) {
+      root.setAttribute('data-theme', t);
+      btn.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+    apply(theme);
+
+    btn.addEventListener('click', function () {
+      theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(theme);
+      try { localStorage.setItem('doc-theme', theme); } catch (e) {}
+    });
+  })();
+  /* ===== END THEME SCRIPT ===== */
+</script>
+
+</body>
+</html>

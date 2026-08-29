@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<!--
+  Canonical print-ready HTML document template for Sam.
+  Source of truth for ALL standalone HTML docs authored under ~/Developer
+  (reports, specs, notes, briefs, study guides, checklists, reference).
+
+  Referenced by ~/.claude/CLAUDE.md > Document Format.
+
+  RULES FOR CLAUDE:
+  - Use the <style> block, the #theme-toggle button, and the theme <script>
+    VERBATIM. Do not restyle, rename variables, reorder, or regenerate them
+    from memory. They must look and behave identically in every document.
+  - Only replace the <title>, the visible content between the markers, and
+    (if needed) ADD new content-specific classes at the END of the <style>
+    block. Never edit the theme variables or the toggle chrome.
+  - The base rules already encode Sam's conventions: serif body, system-sans
+    headings, minimal color, page-break-friendly, no external assets.
+  - No em dashes in the content. Preserve any verbatim quoted text exactly.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What we built today</title>
+<style>
+  /* ===== THEME CHROME — DO NOT EDIT (keep identical across all docs) ===== */
+  :root {
+    --bg: #fff;
+    --text: #1a1a1a;
+    --heading: #111;
+    --muted: #555;
+    --muted2: #444;
+    --faint: #666;
+    --rule: #ddd;
+    --dot: #e2e2e2;
+    --code-bg: #f2f2f2;
+    --setup-bg: #f6f6f4;
+    --setup-border: #e0e0dc;
+    --watch-bg: #fbf7ec;
+    --watch-border: #b58900;
+    --btn-bg: #f0f0ee;
+    --btn-border: #ccc;
+    --accent: #c9a227;
+  }
+  html[data-theme="dark"] {
+    --bg: #17191d;
+    --text: #cfd2d6;
+    --heading: #f1f2f4;
+    --muted: #9aa0a6;
+    --muted2: #b3b8bd;
+    --faint: #888e94;
+    --rule: #34383e;
+    --dot: #2b2f34;
+    --code-bg: #262a30;
+    --setup-bg: #1e2126;
+    --setup-border: #34383e;
+    --watch-bg: #241f14;
+    --watch-border: #c9a227;
+    --btn-bg: #23262b;
+    --btn-border: #3a3f45;
+  }
+  #theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 6px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #theme-toggle:hover { border-color: var(--faint); }
+  /* ===== END THEME CHROME ===== */
+
+  /* ===== BASE DOCUMENT STYLE (Sam's standing conventions) ===== */
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 46rem;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem;
+    background: var(--bg);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  h1, h2, h3 {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    line-height: 1.25;
+    color: var(--heading);
+  }
+  h1 { font-size: 1.7rem; margin: 0 0 0.25rem; }
+  h2 {
+    font-size: 1.2rem;
+    margin: 2.2rem 0 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule);
+    page-break-after: avoid;
+  }
+  h3 { font-size: 1.02rem; margin: 1.5rem 0 0.4rem; }
+  p, li { color: var(--text); }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); }
+  code {
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1.1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote {
+    border-left: 3px solid var(--watch-border);
+    background: var(--watch-bg);
+    margin: 0.8rem 0;
+    padding: 0.7rem 0.9rem;
+    page-break-inside: avoid;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; page-break-inside: avoid; }
+  th, td { border: 1px solid var(--rule); padding: 0.45rem 0.7rem; text-align: left; font-size: 0.95rem; }
+  th { font-family: system-ui, sans-serif; }
+  .meta { margin-top: 2.5rem; color: var(--faint); font-size: 0.85rem; font-family: system-ui, sans-serif; }
+  /* ===== END BASE ===== */
+
+  /* ===== PRINT: force clean light, hide the toggle ===== */
+  @media print {
+    :root { --bg:#fff; --text:#1a1a1a; --heading:#111; --setup-bg:#f6f6f4; --watch-bg:#fbf7ec; --code-bg:#f2f2f2; }
+    body { margin: 0; font-size: 12pt; }
+    blockquote, pre { background: none; }
+    #theme-toggle { display: none; }
+  }
+
+  /* ===== Document-specific styles may be ADDED below this line ===== */
+
+  /* ===== Document-specific: eli5 visuals ===== */
+  .big { font-size: 1.25rem; line-height: 1.5; margin: 1rem 0 1.6rem; }
+  figure.pic { margin: 1.8rem 0; page-break-inside: avoid; text-align: center; }
+  figure.pic svg { max-width: 100%; height: auto; }
+  figure.pic figcaption { font-family: system-ui, sans-serif; font-size: .9rem;
+                          color: var(--muted); margin-top: .6rem; }
+  .score { display: flex; flex-wrap: wrap; gap: .9rem; margin: 1.4rem 0 2rem;
+           padding: 0; list-style: none; }
+  .score li { flex: 1 1 150px; border: 1px solid var(--rule); border-radius: 8px;
+              padding: .8rem .9rem; text-align: center; }
+  .score .n { display: block; font-family: system-ui, sans-serif; font-weight: 700;
+              font-size: 1.7rem; color: var(--heading); }
+  .score .k { font-family: system-ui, sans-serif; font-size: .78rem;
+              text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .beat { border-left: 3px solid var(--accent); padding: .1rem 0 .1rem .9rem;
+          margin: 1.2rem 0; }
+</style>
+</head>
+<body>
+
+<button id="theme-toggle" type="button" aria-label="Toggle dark mode">Light mode</button>
+
+<!-- ===== CONTENT START ===== -->
+
+<h1>What we built today</h1>
+<p class="big">You press buttons during a call. Now those presses actually turn into
+a page you can read the next morning.</p>
+
+<h2>The thing you already had</h2>
+
+<p>Seven keys on a Stream Deck. Each one plays a tiny sound clip that only the
+recording hears, never the person you are talking to. The clip lands on its own
+audio track.</p>
+
+<figure class="pic">
+<svg viewBox="0 0 640 200" role="img" aria-label="A Stream Deck key plays a silent clip onto track 3, which lines up with the conversation on tracks 1 and 2.">
+  <rect x="14" y="70" width="96" height="60" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="62" y="95" text-anchor="middle" font-size="12" font-family="system-ui" font-weight="700" fill="currentColor">PRESS</text>
+  <text x="62" y="114" text-anchor="middle" font-size="10" font-family="system-ui" fill="currentColor">a key</text>
+  <line x1="116" y1="100" x2="168" y2="100" stroke="currentColor" stroke-width="2" marker-end="url(#a1)"/>
+  <text x="250" y="40" font-size="11" font-family="system-ui" fill="currentColor">Track 1  you</text>
+  <rect x="250" y="48" width="360" height="14" rx="4" fill="currentColor" opacity=".18"/>
+  <text x="250" y="86" font-size="11" font-family="system-ui" fill="currentColor">Track 2  them</text>
+  <rect x="250" y="94" width="360" height="14" rx="4" fill="currentColor" opacity=".18"/>
+  <text x="250" y="132" font-size="11" font-family="system-ui" fill="currentColor">Track 3  markers</text>
+  <rect x="250" y="140" width="360" height="14" rx="4" fill="currentColor" opacity=".07"/>
+  <rect x="286" y="140" width="9" height="14" rx="2" fill="currentColor"/>
+  <rect x="372" y="140" width="9" height="14" rx="2" fill="currentColor"/>
+  <rect x="470" y="140" width="9" height="14" rx="2" fill="currentColor"/>
+  <rect x="556" y="140" width="9" height="14" rx="2" fill="currentColor"/>
+  <text x="250" y="180" font-size="10.5" font-family="system-ui" fill="currentColor">All three share one clock, so a press at 12:04 lines up with 12:04 of talking.</text>
+  <defs><marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/></marker></defs>
+</svg>
+<figcaption>Track 3 is silence with a few short clips in it. That turns out to matter a lot.</figcaption>
+</figure>
+
+<h2>Problem one: the buttons did not say enough</h2>
+
+<p>There was one Action key. It could not tell the difference between
+<strong>a thing you have to do</strong> and <strong>a thing they have to do</strong>.
+So we split it, and added a Topic key that marks where the subject changes.</p>
+
+<div class="beat">
+<p>That created a small trap. Both action clips say the word "action", so the
+parser has to check "for me" and "for them" <em>before</em> it checks "action",
+or both buttons collapse into one. The order of the rules is now the feature.</p>
+</div>
+
+<h2>Problem two: the timestamps were being thrown away</h2>
+
+<p>This was the big one, and it had been silently broken the whole time.</p>
+
+<p>The old code handed the entire 31 minute marker track to the transcriber and
+asked it to find the presses. But that track is almost entirely silence, and the
+transcriber responds to a long silence by gluing everything into one lump and
+stamping it with a single time.</p>
+
+<figure class="pic">
+<svg viewBox="0 0 640 230" role="img" aria-label="Before, seventeen presses collapsed into one timestamp. After, silence detection finds each press at its true time.">
+  <text x="20" y="22" font-size="12" font-family="system-ui" font-weight="700" fill="currentColor">BEFORE</text>
+  <rect x="20" y="34" width="600" height="16" rx="4" fill="currentColor" opacity=".07"/>
+  <g fill="currentColor">
+    <rect x="34" y="34" width="7" height="16" rx="2"/><rect x="96" y="34" width="7" height="16" rx="2"/>
+    <rect x="168" y="34" width="7" height="16" rx="2"/><rect x="243" y="34" width="7" height="16" rx="2"/>
+    <rect x="322" y="34" width="7" height="16" rx="2"/><rect x="404" y="34" width="7" height="16" rx="2"/>
+    <rect x="498" y="34" width="7" height="16" rx="2"/><rect x="588" y="34" width="7" height="16" rx="2"/>
+  </g>
+  <line x1="37" y1="58" x2="37" y2="78" stroke="currentColor" stroke-width="1.5"/>
+  <text x="46" y="76" font-size="11" font-family="system-ui" fill="currentColor">everything, stamped 0:00:04</text>
+  <text x="46" y="93" font-size="10.5" font-family="system-ui" fill="currentColor" opacity=".75">17 presses, 1 surviving time, wrong label</text>
+
+  <text x="20" y="134" font-size="12" font-family="system-ui" font-weight="700" fill="currentColor">AFTER</text>
+  <rect x="20" y="146" width="600" height="16" rx="4" fill="currentColor" opacity=".07"/>
+  <g fill="currentColor">
+    <rect x="34" y="146" width="7" height="16" rx="2"/><rect x="96" y="146" width="7" height="16" rx="2"/>
+    <rect x="168" y="146" width="7" height="16" rx="2"/><rect x="243" y="146" width="7" height="16" rx="2"/>
+    <rect x="322" y="146" width="7" height="16" rx="2"/><rect x="404" y="146" width="7" height="16" rx="2"/>
+    <rect x="498" y="146" width="7" height="16" rx="2"/><rect x="588" y="146" width="7" height="16" rx="2"/>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5">
+    <line x1="37" y1="170" x2="37" y2="184"/><line x1="99" y1="170" x2="99" y2="184"/>
+    <line x1="171" y1="170" x2="171" y2="184"/><line x1="246" y1="170" x2="246" y2="184"/>
+    <line x1="325" y1="170" x2="325" y2="184"/><line x1="407" y1="170" x2="407" y2="184"/>
+    <line x1="501" y1="170" x2="501" y2="184"/><line x1="591" y1="170" x2="591" y2="184"/>
+  </g>
+  <text x="20" y="204" font-size="10.5" font-family="system-ui" fill="currentColor">Each press keeps its own time, and gets identified on its own.</text>
+</svg>
+<figcaption>The fix: stop asking the transcriber where the presses are. Silence detection already knows, exactly.</figcaption>
+</figure>
+
+<p>So now the computer finds each press by looking for sound in a silent track,
+cuts out just that second and a half, and only then asks what was said. Small
+question, no room to get it wrong.</p>
+
+<h2>What that recovered from your old calls</h2>
+
+<ul class="score">
+  <li><span class="n">86</span><span class="k">markers before</span></li>
+  <li><span class="n">228</span><span class="k">markers after</span></li>
+  <li><span class="n">27</span><span class="k">call pages</span></li>
+  <li><span class="n">15</span><span class="k">day pages</span></li>
+</ul>
+
+<p>One call went from 1 marker to 21. Those presses were always on the disk. They
+were just unreadable.</p>
+
+<h2>The page you actually open</h2>
+
+<p>Three levels, each one click from the last.</p>
+
+<figure class="pic">
+<svg viewBox="0 0 640 210" role="img" aria-label="The index links to day pages, which link to call pages.">
+  <rect x="24" y="70" width="150" height="72" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="99" y="98" text-anchor="middle" font-size="13" font-family="system-ui" font-weight="700" fill="currentColor">Index</text>
+  <text x="99" y="118" text-anchor="middle" font-size="10.5" font-family="system-ui" fill="currentColor">every day</text>
+  <line x1="180" y1="106" x2="234" y2="106" stroke="currentColor" stroke-width="2" marker-end="url(#a2)"/>
+  <rect x="244" y="70" width="150" height="72" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="319" y="94" text-anchor="middle" font-size="13" font-family="system-ui" font-weight="700" fill="currentColor">A day</text>
+  <text x="319" y="112" text-anchor="middle" font-size="10.5" font-family="system-ui" fill="currentColor">what you owe,</text>
+  <text x="319" y="126" text-anchor="middle" font-size="10.5" font-family="system-ui" fill="currentColor">across every call</text>
+  <line x1="400" y1="106" x2="454" y2="106" stroke="currentColor" stroke-width="2" marker-end="url(#a2)"/>
+  <rect x="464" y="70" width="152" height="72" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="540" y="94" text-anchor="middle" font-size="13" font-family="system-ui" font-weight="700" fill="currentColor">One call</text>
+  <text x="540" y="112" text-anchor="middle" font-size="10.5" font-family="system-ui" fill="currentColor">by topic, with the</text>
+  <text x="540" y="126" text-anchor="middle" font-size="10.5" font-family="system-ui" fill="currentColor">audio at each mark</text>
+  <text x="24" y="186" font-size="10.5" font-family="system-ui" fill="currentColor">Every page answers "what do I have to do" first. Everything else folds away.</text>
+  <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/></marker></defs>
+</svg>
+<figcaption>Start at the index. It is the one you open with coffee.</figcaption>
+</figure>
+
+<h2>Two things worth knowing</h2>
+
+<div class="beat">
+<p><strong>Old calls put their actions in your column.</strong> Before today there
+was one Action key and it meant your own to-do, so that is where those land. The
+pages say so.</p>
+</div>
+
+<div class="beat">
+<p><strong>Some old calls cannot be recovered.</strong> Eighteen of them no longer
+have the marker audio, only the ruined result. Those pages say that too, instead
+of pretending a wrong timestamp is right.</p>
+</div>
+
+<h2>From tomorrow</h2>
+
+<p>Finish the day, hand the day's folder to the tool, and read the index in the
+morning. Two to four calls is a normal night and gets full attention. That was
+the point.</p>
+
+<!-- ===== CONTENT END ===== -->
+
+<script>
+  /* ===== THEME SCRIPT — DO NOT EDIT (keep identical across all docs) ===== */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var stored = null;
+    try { stored = localStorage.getItem('doc-theme'); } catch (e) {}
+    var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = stored || (systemDark ? 'dark' : 'light');
+
+    function apply(t) {
+      root.setAttribute('data-theme', t);
+      btn.textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+    }
+    apply(theme);
+
+    btn.addEventListener('click', function () {
+      theme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(theme);
+      try { localStorage.setItem('doc-theme', theme); } catch (e) {}
+    });
+  })();
+  /* ===== END THEME SCRIPT ===== */
+</script>
+
+</body>
+</html>

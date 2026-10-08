@@ -53,12 +53,18 @@ def merge_rollups(digests, remap=None):
 
 
 def _label(day):
-    """'26-08-25' -> 'August 25, 2026'. Anything else passes through."""
-    try:
-        parsed = _dt.datetime.strptime(day, "%y-%m-%d").date()
-    except (ValueError, TypeError):
-        return day
-    return f"{parsed.strftime('%B')} {parsed.day}, {parsed.year}"
+    """'26-08-25' or '2026-08-25' -> 'August 25, 2026'. Anything else passes through.
+
+    Day directories moved from yy-mm-dd to yyyy-mm-dd under week folders, and
+    old trees still use the short form, so both have to read as dates.
+    """
+    for fmt in ("%y-%m-%d", "%Y-%m-%d"):
+        try:
+            parsed = _dt.datetime.strptime(day, fmt).date()
+        except (ValueError, TypeError):
+            continue
+        return f"{parsed.strftime('%B')} {parsed.day}, {parsed.year}"
+    return day
 
 
 def day_summary(day, digests, remap=None):

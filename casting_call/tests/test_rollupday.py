@@ -49,6 +49,7 @@ def test_day_summary_carries_each_call_through_for_linking():
 
 def test_day_label_is_a_readable_date():
     assert day_summary("26-08-25", [])["label"] == "August 25, 2026"
+    assert day_summary("2026-10-08", [])["label"] == "October 8, 2026"
     # anything that is not a yy-mm-dd directory falls back to its own name
     assert day_summary("misc", [])["label"] == "misc"
 

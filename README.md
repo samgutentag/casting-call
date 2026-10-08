@@ -40,9 +40,9 @@ the tracks share one clock.
 
 | Key | Type | Press it when |
 |---|---|---|
-| Topic Switch | `topic` | the conversation moves to a new subject |
-| Action For Me | `action-me` | you just picked up something to do |
-| Action For Them | `action-them` | the far side owes you something |
+| Mark Topic | `topic` | the conversation moves to a new subject |
+| Mark Action Me | `action-me` | you just picked up something to do |
+| Mark Action Them | `action-them` | the far side owes you something |
 | Important | `important` | it matters and fits nothing else |
 | Question | `question` | you have a follow-up (say it into your muted mic right after) |
 | Quote | `quote` | worth repeating verbatim |

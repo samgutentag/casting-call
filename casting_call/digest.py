@@ -212,7 +212,7 @@ def rollup(items):
     """Everything actionable, flattened across section boundaries.
 
     Sam reads this before re-reading the call, so a spoken "action item" and a
-    pressed Action For Me land in the same bucket: same intent, two channels.
+    pressed Mark Action Me land in the same bucket: same intent, two channels.
     The unowned `action` fallback gets its own bucket rather than being guessed
     into one of the other two.
     """

@@ -1,7 +1,8 @@
 """
-marker_track — turn Track 3 into timestamped marker presses.
+marker_track — turn the marker track into timestamped marker presses.
 
-Track 3 is 99% silence with a handful of short pre-canned clips in it. Handing
+The marker track (Track 4 on the four-track rig, Track 3 before 2026-10-08)
+is 99% silence with a handful of short pre-canned clips in it. Handing
 that whole track to whisper does not work: on the 2026-08-28 eng-ama call it
 merged 18 presses spread over 31 minutes into ONE segment stamped at the first
 sound, so every timestamp after the first was lost. Timestamps are the entire
@@ -45,7 +46,7 @@ MIN_SILENCE = 0.4
 # Slack around each burst when slicing. silencedetect reports the loud middle of
 # a clip and trims ~0.3s of quiet attack and decay off each end, so a burst reads
 # as ~0.7s where the source clip is ~1.0-1.3s. Padding both ends by this much
-# puts the whole word back. There is nothing else on Track 3 to bleed in, and the
+# puts the whole word back. There is nothing else on the marker track to bleed in, and the
 # closest two presses on a real call were 2s apart, so erring wide is free.
 PAD = 0.4
 
@@ -150,7 +151,7 @@ def bursts_to_markers(bursts, texts):
 
     The burst's own start second is the marker time, floored to match the
     transcript's whole-second lines. A burst whose text matches no marker
-    keyword is dropped rather than guessed at: stray noise on Track 3 should
+    keyword is dropped rather than guessed at: stray noise on the marker track should
     produce nothing, not a wrong marker.
     """
     out = []
@@ -163,7 +164,7 @@ def bursts_to_markers(bursts, texts):
 
 def markers_from_track(audio_path, whisper_bin, model, metal_resources=None,
                        progress=None):
-    """Full Track 3 -> markers pass. Returns [{'t','type','text'}] in time order."""
+    """Full marker track -> markers pass. Returns [{'t','type','text'}] in time order."""
     bursts = detect_bursts(audio_path)
     texts = []
     for n, (start, end) in enumerate(bursts, 1):
@@ -176,8 +177,8 @@ def markers_from_track(audio_path, whisper_bin, model, metal_resources=None,
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="Detect Track 3 marker presses and fold them into a transcript.")
-    ap.add_argument("marker_audio", help="the Track 3 audio (wav/mp3)")
+        description="Detect marker-track presses and fold them into a transcript.")
+    ap.add_argument("marker_audio", help="the marker track audio (wav/mp3)")
     ap.add_argument("transcript", help="merged transcript to fold markers into")
     ap.add_argument("--whisper-bin", default="whisper-cli")
     ap.add_argument("--model", required=True)
@@ -208,7 +209,7 @@ def main(argv=None):
         ), encoding="utf-8")
 
     if not markers:
-        print("no markers recognized on Track 3")
+        print("no markers recognized on the marker track")
         return 0
 
     path = Path(args.transcript)

@@ -1,13 +1,14 @@
 """
-markers — fold Track-3 spoken markers into the transcript, inline.
+markers — fold marker-track phrases into the transcript, inline.
 
-The rig records a third audio track (0:a:2) fed only by pre-canned marker
+The rig records a marker track (Track 4, 0:a:3; Track 3, 0:a:2, before
+2026-10-08) fed only by pre-canned marker
 phrases ("mark topic", "mark action for me", ...) triggered from the Stream Deck,
 routed so the far side never hears them. Whisper transcribes that track like any
 other; each recognized phrase becomes an inline marker line at its own timestamp.
 
-No sidecar and no anchor: Track 3 shares the recording clock with the voice
-tracks, so a phrase at 14:32 on Track 3 lines up with 14:32 in the transcript
+No sidecar and no anchor: the marker track shares the recording clock with the
+voice tracks, so a phrase at 14:32 on it lines up with 14:32 in the transcript
 for free.
 
 Usage:
@@ -41,7 +42,7 @@ MARKER_RULES = [
     ("video", "video"),
     ("action", "action"),
     # Retired buttons. No key produces these any more, but every call recorded
-    # before 2026-08-28 has them on its Track 3, and re-deriving one of those
+    # before 2026-08-28 has them on its marker track, and re-deriving one of those
     # tracks drops the press entirely if nothing here matches. Last in the list
     # so they can never shadow a current keyword.
     ("flag", "flag"),
@@ -106,7 +107,7 @@ def main(argv=None):
     track3 = parse_transcript(track3_path.read_text(encoding="utf-8"))
     markers = markers_from_entries(track3)
     if not markers:
-        print("no markers recognized on Track 3")
+        print("no markers recognized on the marker track")
         return 0
 
     entries = parse_transcript(main_path.read_text(encoding="utf-8"))

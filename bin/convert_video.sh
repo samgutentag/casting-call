@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# OPTIONAL: render a smaller, playable .mp4 from a multi-track recording, with
-# the two audio tracks folded into one stereo track: you = left, caller = right.
+# OPTIONAL: render a smaller, playable .mp4 from a multi-track recording.
+#
+# Audio is the master mix (Track 1) on recordings from the four-track rig
+# (2026-10-08 on): what you actually heard, stereo as OBS recorded it. Older
+# recordings have no master, so their two voice tracks are folded into one
+# stereo track instead: you = left, caller = right.
 #
 # The pipeline does NOT need this (transcription reads the .mkv directly). It is
 # purely for watching a call back, or eyeballing captions. The .mkv stays the
@@ -10,7 +14,7 @@
 #
 # Video is re-encoded to H.265 (HEVC, CRF 24) — lossy but far smaller than the
 # source, and playable in QuickTime/IINA on macOS (the hvc1 tag is what makes
-# QuickTime recognize it). Audio is rebuilt into the L/R mix.
+# QuickTime recognize it).
 #
 # Output lands in the same per-recording folder ripa creates: <name>/<name>.mp4,
 # next to <name>.mp3 and the parts/ tracks. Run ripa first (or after) and each
@@ -28,7 +32,7 @@ total=${#recordings[@]}
 current=0
 
 echo "Found $total recording(s) to render"
-echo "Audio layout: L=you (0:a:0)  R=caller (0:a:1)"
+echo "Audio: master mix (Track 1) on 4-track files, else L=you (0:a:0) R=caller (0:a:1)"
 echo "--------------------------"
 
 for input_file in "${recordings[@]}"; do
@@ -43,13 +47,21 @@ for input_file in "${recordings[@]}"; do
     fi
     mkdir -p "$rec_dir"
 
-    # Downmix each track to mono (handles mono or stereo tracks), place you on
-    # the left channel and the caller on the right, and re-encode the video to
-    # H.265 to shrink it. hvc1 tag keeps QuickTime happy; +faststart moves the
-    # moov atom up for instant playback.
+    # Legacy files: downmix each voice track to mono (handles mono or stereo
+    # tracks) and put you on the left, the caller on the right. Either way the
+    # video is re-encoded to H.265 to shrink it. hvc1 tag keeps QuickTime happy;
+    # +faststart moves the moov atom up for instant playback.
+    n_tracks=$(ffprobe -v error -select_streams a -show_entries stream=index \
+        -of csv=p=0 "$input_file" 2>/dev/null | grep -c .)
+    if [ "${n_tracks:-0}" -ge 4 ]; then
+        audio=(-map 0:a:0)
+    elif [ "${n_tracks:-0}" -ge 2 ]; then
+        audio=(-filter_complex "[0:a:0]aformat=channel_layouts=mono[l];[0:a:1]aformat=channel_layouts=mono[r];[l][r]join=inputs=2:channel_layout=stereo[a]" -map "[a]")
+    else
+        audio=(-map "0:a:0?")
+    fi
     ffmpeg -i "$input_file" \
-        -filter_complex "[0:a:0]aformat=channel_layouts=mono[l];[0:a:1]aformat=channel_layouts=mono[r];[l][r]join=inputs=2:channel_layout=stereo[a]" \
-        -map 0:v:0 -map "[a]" \
+        -map 0:v:0 "${audio[@]}" \
         -c:v libx265 -crf 24 -preset medium -tag:v hvc1 \
         -c:a aac -b:a 160k \
         -movflags +faststart \

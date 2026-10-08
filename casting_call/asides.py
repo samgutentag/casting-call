@@ -3,8 +3,8 @@ asides — the phrases Sam speaks on his own track to flag something live.
 
 The Stream Deck covers the deliberate marker channel (see `markers`), but Sam
 also flags things out loud, usually while muted: "action item, send the SOW",
-"notes notes notes, the nav labels are stale". Those land on Track 1 like any
-other speech, so they arrive in the merged transcript as ordinary `[You]` lines.
+"notes notes notes, the nav labels are stale". Those land on his mic track like
+any other speech, so they arrive in the merged transcript as ordinary `[You]` lines.
 
 This module finds them deterministically. It used to live as a phrase list in
 the process-transcript skill's prose, which meant the model re-interpreted it on

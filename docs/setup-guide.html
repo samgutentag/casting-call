@@ -139,7 +139,7 @@
 <h1>casting-call: New-Machine Setup, End to End</h1>
 
 <p>Everything it takes to go from a fresh Mac to a working call-recording rig: install the tools,
-record a screen call as three separate audio tracks (you, the far side, and a marker track), and
+record a screen call as four audio tracks (a master mix, you, the far side, and a marker track), and
 turn it into a transcript with your flagged moments dropped in at the right spot. Follow it top to
 bottom the first time.</p>
 
@@ -150,9 +150,10 @@ or Stream Deck that only a human can do. The flow the whole thing produces is in
 
 <h2>What you end up with</h2>
 
-<p>OBS records your screen plus three audio tracks into one <code>.mkv</code>. Track 1 is your mic,
-Track 2 is the far side (Chrome, where Meet runs), and Track 3 is silent except for the short "mark
-flag" / "mark action" clips a Stream Deck button fires. After the call, one command splits the
+<p>OBS records your screen plus four audio tracks into one <code>.mkv</code>. Track 1 is the
+master mix of everything, Track 2 is your mic, Track 3 is the computer audio (Chrome, where Meet
+runs, plus the screen capture), and Track 4 is silent except for the short "mark topic" / "mark
+action for me" clips a Stream Deck button fires. After the call, one command splits the
 tracks, transcribes them, cleans up the junk Whisper invents on silence, and folds your markers in
 as <code>[MARKER]</code> lines. If the far side ever drops out, the captions on screen are the backup.</p>
 
@@ -220,7 +221,7 @@ If <code>python3</code> offers to install "command line developer tools," let it
 last two commands. The scripts and Whisper only need what you just installed.
 </blockquote>
 
-<h2>Part 2: OBS, recording three tracks <span class="tag gui">in the app</span></h2>
+<h2>Part 2: OBS, recording four tracks <span class="tag gui">in the app</span></h2>
 
 <p>OBS records MKV on purpose. If a recording ever crashes, an MKV is still readable where an MP4
 would be corrupt. You never remux it; the pipeline reads the MKV directly.</p>
@@ -230,7 +231,7 @@ would be corrupt. You never remux it; the pipeline reads the MKV directly.</p>
 <li><strong>Settings, Output.</strong> Set <strong>Output Mode</strong> to <strong>Advanced</strong>.
 On the <strong>Recording</strong> tab set <strong>Recording Format</strong> to
 <strong>Matroska Video (.mkv)</strong>, and under <strong>Audio Track</strong> check
-<strong>1, 2, and 3</strong>.</li>
+<strong>1, 2, 3, and 4</strong>.</li>
 <li><strong>Sources.</strong> Add these to your scene:
   <ol>
   <li><strong>Display Capture</strong> (or Window Capture) for the screen. This is the video.</li>
@@ -244,8 +245,10 @@ On the <strong>Recording</strong> tab set <strong>Recording Format</strong> to
 <strong>Advanced Audio Properties</strong>. For each source, use the <strong>Tracks</strong>
 checkboxes on the right:
   <ul>
-  <li>Mic (you): Track <strong>1</strong> only.</li>
-  <li>Chrome (far side): Track <strong>2</strong> only.</li>
+  <li>Mic (you): Tracks <strong>1</strong> and <strong>2</strong>.</li>
+  <li>Chrome (far side): Tracks <strong>1</strong> and <strong>3</strong>.</li>
+  <li>Display Capture: Tracks <strong>1</strong> and <strong>3</strong>. If its audio duplicates
+  what Chrome already captures, the far side lands on Track 3 twice; unchecking its tracks is fine.</li>
   </ul>
 </li>
 </ol>
@@ -259,7 +262,7 @@ alone.
 <h2>Part 3: The marker track <span class="tag gui">in the app</span></h2>
 
 <p>This is the piece that makes markers work without any syncing. Seven clips, each on its own
-media source, all routed to Track 3, none of them ever heard by anyone live.</p>
+media source, all routed to Track 4 (and the master on Track 1), none of them ever heard by anyone live.</p>
 
 <p><strong>Already have the old five- or seven-key rig?</strong> Do not rebuild it. Skip to
 <a href="#migrate">Migrating an existing rig</a> below, which is three renames and nothing else.</p>
@@ -296,18 +299,19 @@ as written. Click <strong>OK</strong>.</li>
 <tr><td><code>Mark Video</code></td><td><code>obs/marker-clips/mark-video.wav</code></td></tr>
 </table>
 
-<p>Now route all seven to Track 3 in one pass:</p>
+<p>Now route all seven to Track 4 in one pass:</p>
 
 <ol>
 <li>Right-click any source, choose <strong>Advanced Audio Properties</strong>. Every source in the
 scene is listed as a row.</li>
 <li>For each of the seven marker rows:
   <ul>
-  <li><strong>Tracks</strong>: check <strong>3</strong>, and uncheck <strong>1</strong> and
-  <strong>2</strong>. Markers must never touch the voice tracks.</li>
+  <li><strong>Tracks</strong>: check <strong>1</strong> and <strong>4</strong>, and uncheck
+  <strong>2</strong> and <strong>3</strong>. Markers must never touch the voice tracks, or Whisper
+  transcribes them as speech.</li>
   <li><strong>Audio Monitoring</strong>: <strong>Monitor Off</strong>. This is what keeps the clip
   out of your headphones and, more importantly, out of anything Meet can pick up. It still records
-  to Track 3.</li>
+  to Tracks 1 and 4.</li>
   </ul>
 </li>
 <li>Close the window. There is no Save button; the settings apply as you set them.</li>
@@ -315,7 +319,7 @@ scene is listed as a row.</li>
 
 <blockquote>
 <strong>Why nobody hears it:</strong> an OBS media source plays inside OBS. With Monitor Off, OBS
-records it to Track 3 but never sends it to an output device, and OBS never feeds audio back into
+records it to Tracks 1 and 4 but never sends it to an output device, and OBS never feeds audio back into
 your mic or Meet. So the marker is silent to you and to the caller, and still lands in the file.
 </blockquote>
 
@@ -421,10 +425,12 @@ dropping them. That is deliberate: old calls stay readable, and nothing silently
 
 <blockquote>
 <strong>The one gotcha that will silently eat your markers:</strong> the marker sources live on
-Track 3, so the recording output has to actually record Track 3. Confirm Settings, Output,
-Recording has Audio Tracks 1, 2, <em>and</em> 3 checked. If Track 3 is off, the buttons fire, the
-clips play, and none of it ends up in the file. Sanity check a test recording with
-<code>ffprobe recording.mkv</code> and count three audio streams.
+Track 4, so the recording output has to actually record Track 4, and each clip has to be routed to
+it. Confirm Settings, Output, Recording has Audio Tracks 1 through 4 checked. If Track 4 is off or
+the clips go elsewhere, the buttons fire, the clips play, and none of it ends up where the pipeline
+looks. <code>ripa</code> warns when the marker track is digital silence; if the clips landed on
+another track, rerun with <code>MARKER_TRACK=&lt;that track&gt;</code>. Sanity check a test
+recording with <code>ffprobe recording.mkv</code> and count four audio streams.
 </blockquote>
 
 <h2>Part 5: Prove it works before a real call <span class="tag cli">terminal</span> + <span class="tag gui">in the app</span></h2>
@@ -435,9 +441,9 @@ marker keys</strong> with a beat between each, and press <strong>Stop</strong>. 
 a couple: the point of the test is that each key produces a <em>different</em> type, which is
 exactly what a mis-bound key breaks. Move the resulting <code>.mkv</code> into a folder, say
 <code>~/calls/test/</code>.</li>
-<li>Confirm the file really has three audio tracks:
+<li>Confirm the file really has four audio tracks:
 <pre><code>ffprobe -v error -show_entries stream=index,codec_type -of csv ~/calls/test/*.mkv
-# expect one 'video' line and three 'audio' lines</code></pre>
+# expect one 'video' line and four 'audio' lines</code></pre>
 </li>
 <li>Run the pipeline and read the result:
 <pre><code>cd ~/Developer/casting-call
@@ -466,8 +472,8 @@ whenever something matters.</li>
 <li><code>bash bin/extract_audio_stereo.sh &lt;folder&gt;</code>. That is the transcript, markers and all,
 ready to hand to an LLM.</li>
 <li>Optional, only when you want to watch it back:
-<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code> with you on the
-left channel and the caller on the right.</li>
+<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code> with the master
+mix (Track 1) as its audio.</li>
 <li>Optional, to put real names on the far-side lines:
 <code>bash bin/extract_speakers.sh &lt;recording&gt; --region x,y,w,h --transcript &lt;transcript&gt;</code>.</li>
 </ol>
@@ -475,7 +481,7 @@ left channel and the caller on the right.</li>
 <h2>Part 7: When the far side drops out</h2>
 
 <p>Chrome's audio capture can die mid-call and record silence from that point on. The pipeline
-watches for it: if Track 2 goes quiet for a sustained stretch, it prints a warning with the
+watches for it: if Track 3 goes quiet for a sustained stretch, it prints a warning with the
 timestamp and points you at the recovery tool. The lines Whisper would have invented on that dead
 audio are stripped automatically, so the transcript does not fill up with fake "thank you" and
 "subtitles by" junk.</p>

@@ -153,7 +153,7 @@ now ride inside the recording instead of a sidecar file.</p>
 
 <div class="diagram-wrap">
 <svg class="flow" viewBox="0 0 960 840" role="img"
-     aria-label="Flow diagram of the casting-call pipeline: OBS records an MKV with voice tracks plus a marker track, tracks are extracted and silence-checked before transcription, woven into a transcript, cleaned of hallucinations, and annotated with inline Track-3 markers, with a caption-recovery fallback when the far-side audio drops and an optional MP4 render.">
+     aria-label="Flow diagram of the casting-call pipeline: OBS records an MKV with a master mix, two voice tracks, and a marker track, tracks are extracted and silence-checked before transcription, woven into a transcript, cleaned of hallucinations, and annotated with inline Track-4 markers, with a caption-recovery fallback when the far-side audio drops and an optional MP4 render.">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
@@ -166,11 +166,11 @@ now ride inside the recording instead of a sidecar file.</p>
   <!-- ===== main spine (left) ===== -->
   <rect class="box" x="40" y="24" width="300" height="60" rx="8"/>
   <text class="title" x="56" y="48">OBS record</text>
-  <text class="sub" x="56" y="66">call.mkv: T1 you · T2 far · T3 markers</text>
+  <text class="sub" x="56" y="66">call.mkv: T1 mix·T2 you·T3 far·T4 marks</text>
 
   <rect class="box" x="40" y="128" width="300" height="56" rx="8"/>
   <text class="title" x="56" y="152">Extract voice tracks</text>
-  <text class="sub" x="56" y="170">-map 0:a:0 / 0:a:1 → me.wav / them.wav</text>
+  <text class="sub" x="56" y="170">-map 0:a:1 / 0:a:2 → me.wav / them.wav</text>
 
   <rect class="box" x="40" y="232" width="300" height="56" rx="8"/>
   <text class="title" x="56" y="256">Detect silence (before whisper)</text>
@@ -189,7 +189,7 @@ now ride inside the recording instead of a sidecar file.</p>
   <text class="sub" x="56" y="586">drop silent-span lines + junk phrases</text>
 
   <rect class="box output" x="40" y="648" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="672">Embed Track-3 markers (inline)</text>
+  <text class="title" x="56" y="672">Embed Track-4 markers (inline)</text>
   <text class="sub" x="56" y="690">[MARKER] lines at their own offset</text>
 
   <rect class="box" x="40" y="752" width="300" height="56" rx="8"/>
@@ -209,13 +209,13 @@ now ride inside the recording instead of a sidecar file.</p>
 
   <!-- markers-in-recording note -->
   <rect class="box input" x="470" y="24" width="440" height="60" rx="8"/>
-  <text class="sub" x="486" y="46">Markers ride Track 3 inside the recording.</text>
+  <text class="sub" x="486" y="46">Markers ride Track 4 inside the recording.</text>
   <text class="sub" x="486" y="64">Same clock as the voice, so nothing to sync.</text>
   <path class="edge" d="M340,54 L470,54" marker-end="url(#ah)"/>
 
-  <!-- Track-3 detail feeding the embed step -->
+  <!-- Track-4 detail feeding the embed step -->
   <rect class="box input" x="470" y="640" width="440" height="72" rx="8"/>
-  <text class="title" x="486" y="662">Track 3 = spoken "mark …" phrases</text>
+  <text class="title" x="486" y="662">Track 4 = spoken "mark …" phrases</text>
   <text class="sub" x="486" y="680">whisper reads them; each recognized phrase</text>
   <text class="sub" x="486" y="696">becomes an inline [MARKER] line at its time</text>
   <path class="edge" d="M470,676 L340,676" marker-end="url(#ah)"/>
@@ -234,26 +234,31 @@ now ride inside the recording instead of a sidecar file.</p>
   <!-- OPTIONAL render (standalone, reads the mkv) -->
   <rect class="box output" x="470" y="440" width="440" height="72" rx="8"/>
   <text class="title" x="486" y="462">ripv (optional): render call.mp4</text>
-  <text class="sub" x="486" y="480">video + stereo, you=L / caller=R.</text>
+  <text class="sub" x="486" y="480">video + master mix (old files: you=L / caller=R).</text>
   <text class="sub" x="486" y="496">playback only, reads the .mkv directly.</text>
 </svg>
 </div>
 
 <h2>The paths in words</h2>
 
-<p><strong>Happy path.</strong> OBS writes an MKV that holds the two voice tracks and, when you use
-the buttons, a third marker track. The pipeline reads that MKV directly, so there is no remux to
-sit through. It pulls the two voice tracks out by stream index, checks each for silence before
+<p><strong>Happy path.</strong> OBS writes an MKV with four audio tracks: a master mix of everything
+(Track 1), your mic (Track 2), computer audio, meaning the far side plus the screen's sound (Track
+3), and the marker clips (Track 4). The pipeline reads that MKV directly, so there is no remux to
+sit through. The master becomes the combined <code>&lt;name&gt;.mp3</code>. It pulls the two voice tracks out by stream index, checks each for silence before
 spending any time on Whisper, transcribes them, and weaves them into one <code>[You]</code> /
 <code>[Caller]</code> transcript. Then it cleans out the hallucinations Whisper invents on silence
-and folds in your markers.</p>
+and folds in your markers. Recordings from before 2026-10-08 have three tracks (mic, far side,
+markers) and no master; <code>ripa</code> picks the layout per file from its track count and builds
+the combined MP3 by mixing the separate tracks instead.</p>
 
 <p><strong>Markers.</strong> This is the part that used to be a headache and no longer is. Each
-Stream Deck button plays a short "mark flag" / "mark action" clip onto Track 3, routed so the far
-side never hears it. Because that track is recorded on the same clock as the voice, a phrase at
+Stream Deck button plays a short "mark flag" / "mark action" clip onto Track 4, with monitoring off so
+nobody on the call hears it. Because that track is recorded on the same clock as the voice, a phrase at
 14:32 lines up with 14:32 in the transcript with no alignment math at all. Whisper reads the track
 like any other, and each recognized phrase becomes an inline <code>[MARKER]</code> line dropped in at
-its moment. No sidecar file, no anchor, no plugin.</p>
+its moment. No sidecar file, no anchor, no plugin. If that track comes out as digital silence,
+<code>ripa</code> warns that the Mark clips were probably routed to another track in OBS; rerun with
+<code>MARKER_TRACK=&lt;track&gt;</code> to read them from where they landed.</p>
 
 <p><strong>Dead-channel fallback.</strong> The silence check flags a sustained drop on the far-side
 track (Chrome App Audio Capture does this). When that happens the words only exist in the on-screen
@@ -265,7 +270,8 @@ mid-call and one region no longer covers the whole thing.</p>
 
 <p><strong>The remux stopped being mandatory.</strong> Transcription reads the MKV fine, so the MP4
 is now an optional render (<code>ripv</code>) you make only when you want to watch a call back,
-with you on the left channel and the caller on the right. The MKV is the file you keep.</p>
+with the master mix as its audio (older recordings: you on the left channel and the caller on
+the right). The MKV is the file you keep.</p>
 
 <p><strong>The affect layer is gone.</strong> The prosody and face-tracking scan caused more trouble
 than it earned, so it and its two heavy dependencies came out. That also un-broke the test suite.</p>
@@ -275,7 +281,7 @@ sidecar file stamped with wall-clock time, then tried to align them to the recor
 <code>record_start</code> anchor. OBS never wrote a reliable timestamp, which made that fragile. A
 sound on a third track has no such problem: it is already in the right place.</p>
 
-<p class="meta">casting-call · pipeline flow · updated 2026-07-24 (post-simplification)</p>
+<p class="meta">casting-call · pipeline flow · updated 2026-10-08 (four-track rig)</p>
 <!-- ===== CONTENT END ===== -->
 
 <script>

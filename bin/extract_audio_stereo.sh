@@ -2,13 +2,20 @@
 
 # Transcribe OBS multi-track recordings with speaker labels.
 #
-# The rig records the screen plus TWO separate audio tracks into one .mkv:
-#   Track 1 (stream 0:a:0) = your mic (Elgato Wave)
-#   Track 2 (stream 0:a:1) = the far side (Chrome / Meet, via App Audio Capture)
+# The rig records the screen plus FOUR audio tracks into one .mkv:
+#   Track 1 (stream 0:a:0) = master mix (everything below, summed by OBS)
+#   Track 2 (stream 0:a:1) = your mic (Elgato Wave)
+#   Track 3 (stream 0:a:2) = computer audio: the far side (Chrome / Meet) + screen
+#   Track 4 (stream 0:a:3) = Stream Deck marker clips
+#
+# Recordings from before 2026-10-08 have three tracks (mic, far side, markers)
+# and no master. The layout is picked per file from its audio track count, so
+# old recordings still transcribe. MARKER_TRACK=<1-based track> overrides where
+# the markers are read from, for a one-off recorded with the clips misrouted.
 #
 # The .mkv is the canonical recording and is read directly (no remux needed for
-# transcription). For a playable video with you=left / caller=right, render one
-# separately with convert_video.sh (ripv).
+# transcription). For a playable video, render one separately with
+# convert_video.sh (ripv).
 #
 # NOTE: filename kept as extract_audio_stereo.sh so the `ripa` alias keeps working.
 #       The pipeline is no longer stereo/pan-split. Rename to transcribe_multitrack.sh
@@ -92,6 +99,17 @@ get_duration() {
 has_stream() {
     ffprobe -v error -select_streams "$2" -show_entries stream=index \
         -of csv=p=0 "$1" 2>/dev/null | grep -q .
+}
+
+audio_track_count() {
+    ffprobe -v error -select_streams a -show_entries stream=index \
+        -of csv=p=0 "$1" 2>/dev/null | grep -c .
+}
+
+# Peak level of a file in dB ("-91.0" is OBS's digital silence). Empty if unreadable.
+peak_db() {
+    ffmpeg -hide_banner -nostats -i "$1" -af volumedetect -f null /dev/null 2>&1 \
+        | awk '/max_volume:/ { print $(NF-1) }'
 }
 
 # All silent spans >= min_dur, as "start:end,start:end" (empty if none).
@@ -245,7 +263,7 @@ transcribe_track() {
 total=${#recordings[@]}
 echo "Found $total recording(s) (.mkv/.mp4)"
 echo "Model: $WHISPER_MODEL"
-echo "Tracks: 0:a:0=[${YOU_LABEL}]  0:a:1=[${CALLER_LABEL}]"
+echo "Layout: 4 tracks = master, [${YOU_LABEL}], [${CALLER_LABEL}], markers | 3 tracks = [${YOU_LABEL}], [${CALLER_LABEL}], markers"
 echo ""
 if [ "$total" -eq 0 ]; then
     echo "Nothing to do. Point this at a folder of OBS .mkv recordings."; exit 0
@@ -261,7 +279,7 @@ for input_file in "${recordings[@]}"; do
     combined_mp3="$rec_dir/${filename}.mp3"
     tmp_you="/tmp/whisper_${filename}_you.wav"
     tmp_caller="/tmp/whisper_${filename}_caller.wav"
-    tmp_t3="/tmp/whisper_${filename}_t3.wav"
+    tmp_mk="/tmp/whisper_${filename}_markers.wav"
     tmp_srt_you="/tmp/whisper_${filename}_you.srt"
     tmp_srt_caller="/tmp/whisper_${filename}_caller.srt"
 
@@ -270,46 +288,60 @@ for input_file in "${recordings[@]}"; do
     if [ -f "$txt_out" ]; then
         echo "  ⏭  Transcript already exists, skipping"; continue
     fi
-    if ! has_stream "$input_file" "a:1"; then
+    n_tracks=$(audio_track_count "$input_file")
+    if [ "${n_tracks:-0}" -lt 2 ]; then
         echo "  ✗ Only one audio track — not a multi-track recording."
         echo "    If the far side is on video only, recover from captions: ripcap $input_file"
         continue
     fi
 
+    # Stream indices for this file's layout. master is empty on pre-2026-10-08
+    # recordings, which get a combined mix built from the separate tracks instead.
+    if [ "$n_tracks" -ge 4 ]; then
+        master_s=0; you_s=1; cal_s=2; mk_s=3
+    else
+        master_s=""; you_s=0; cal_s=1; mk_s=""
+        [ "$n_tracks" -ge 3 ] && mk_s=2
+    fi
+    if [ -n "$MARKER_TRACK" ]; then
+        if ! [[ "$MARKER_TRACK" =~ ^[0-9]+$ ]] || [ "$MARKER_TRACK" -lt 1 ] || [ "$MARKER_TRACK" -gt "$n_tracks" ]; then
+            echo "  ✗ MARKER_TRACK=$MARKER_TRACK, but this file has tracks 1-$n_tracks; skipping."; continue
+        fi
+        mk_s=$((MARKER_TRACK - 1))
+        echo "  → Markers read from Track $MARKER_TRACK (MARKER_TRACK override)"
+    fi
+
     mkdir -p "$parts_dir"
 
     # ONE demux pass. filter_complex fans each track into: a 16k mono WAV (whisper,
-    # transient), a source-rate MP3 (deliverable), and an amix branch for the combined
-    # mono MP3. you/caller get loudnorm; the markers track is left raw. The combined
-    # mix is loudnorm'd once more so the summed file sits at a sane level.
-    echo "  → Extracting tracks..."
+    # transient) and a source-rate MP3 (deliverable). you/caller get loudnorm; the
+    # markers track is left raw. The combined mono MP3 is the master track when the
+    # rig recorded one, else an amix of the separate tracks; either way it is
+    # loudnorm'd so it sits at a sane level.
+    echo "  → Extracting tracks ($n_tracks in file)..."
     LN="loudnorm=I=-16:TP=-1.5:LRA=11"
-    if has_stream "$input_file" "a:2"; then
-        fc="[0:a:0]${LN},asplit=3[you_w][you_m][you_x];"
-        fc+="[0:a:1]${LN},asplit=3[cal_w][cal_m][cal_x];"
-        fc+="[0:a:2]asplit=3[t3_w][t3_m][t3_x];"
-        fc+="[you_x][cal_x][t3_x]amix=inputs=3:normalize=1,${LN}[mix]"
-        ffmpeg -i "$input_file" -filter_complex "$fc" \
-            -map "[you_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you" \
-            -map "[cal_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller" \
-            -map "[t3_w]"  -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_t3" \
-            -map "[you_m]" -c:a libmp3lame -q:a 2 "$parts_dir/you.mp3" \
-            -map "[cal_m]" -c:a libmp3lame -q:a 2 "$parts_dir/caller.mp3" \
-            -map "[t3_m]"  -c:a libmp3lame -q:a 4 "$parts_dir/markers.mp3" \
-            -map "[mix]"   -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3" \
-            -y -loglevel error
-    else
-        fc="[0:a:0]${LN},asplit=3[you_w][you_m][you_x];"
-        fc+="[0:a:1]${LN},asplit=3[cal_w][cal_m][cal_x];"
-        fc+="[you_x][cal_x]amix=inputs=2:normalize=1,${LN}[mix]"
-        ffmpeg -i "$input_file" -filter_complex "$fc" \
-            -map "[you_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you" \
-            -map "[cal_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller" \
-            -map "[you_m]" -c:a libmp3lame -q:a 2 "$parts_dir/you.mp3" \
-            -map "[cal_m]" -c:a libmp3lame -q:a 2 "$parts_dir/caller.mp3" \
-            -map "[mix]"   -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3" \
-            -y -loglevel error
+    # With a master track the per-track mix branch (x) is not needed.
+    if [ -n "$master_s" ]; then split="asplit=2"; x=""; else split="asplit=3"; x="x"; fi
+    fc="[0:a:${you_s}]${LN},${split}[you_w][you_m]${x:+[you_x]};"
+    fc+="[0:a:${cal_s}]${LN},${split}[cal_w][cal_m]${x:+[cal_x]};"
+    outs=(-map "[you_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_you"
+          -map "[cal_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_caller"
+          -map "[you_m]" -c:a libmp3lame -q:a 2 "$parts_dir/you.mp3"
+          -map "[cal_m]" -c:a libmp3lame -q:a 2 "$parts_dir/caller.mp3")
+    mix_in="[you_x][cal_x]"; n_mix=2
+    if [ -n "$mk_s" ]; then
+        fc+="[0:a:${mk_s}]${split}[t3_w][t3_m]${x:+[t3_x]};"
+        outs+=(-map "[t3_w]" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_mk"
+               -map "[t3_m]" -c:a libmp3lame -q:a 4 "$parts_dir/markers.mp3")
+        mix_in+="[t3_x]"; n_mix=3
     fi
+    if [ -n "$master_s" ]; then
+        fc+="[0:a:${master_s}]${LN}[mix]"
+    else
+        fc+="${mix_in}amix=inputs=${n_mix}:normalize=1,${LN}[mix]"
+    fi
+    outs+=(-map "[mix]" -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3")
+    ffmpeg -i "$input_file" -filter_complex "$fc" "${outs[@]}" -y -loglevel error
     if [ $? -ne 0 ] || [ ! -s "$tmp_you" ] || [ ! -s "$tmp_caller" ]; then
         echo "  ✗ Extraction failed for $filename; skipping."; continue
     fi
@@ -345,7 +377,8 @@ for input_file in "${recordings[@]}"; do
         --silent-you "$spans_you" --silent-caller "$spans_caller" \
         | sed 's/^/  → /' )
 
-    # Track 3 (0:a:2): pre-canned marker phrases, if the rig recorded them.
+    # The marker track (Track 4 now, Track 3 before 2026-10-08): pre-canned
+    # marker phrases, if the rig recorded them.
     #
     # Do NOT hand the whole track to whisper. It is ~99% silence with short clips
     # scattered through it, and whisper merges the lot into one segment stamped at
@@ -356,10 +389,19 @@ for input_file in "${recordings[@]}"; do
     # marker_track finds the presses with silencedetect (the track is silence by
     # construction, so this is exact) and gives whisper one short slice per press,
     # where there is nothing to merge with.
-    if has_stream "$input_file" "a:2"; then
-        echo "  → Parsing Track 3 markers..."
+    if [ -n "$mk_s" ]; then
+        echo "  → Parsing markers (Track $((mk_s + 1)))..."
+        # A marker track at digital silence usually means the Stream Deck clips
+        # went to another track in OBS, not that nothing was pressed. Say so,
+        # since the transcript alone would just look marker-free.
+        mk_peak=$(peak_db "$tmp_mk")
+        if [ -n "$mk_peak" ] && awk -v p="$mk_peak" 'BEGIN{exit !(p <= -90)}'; then
+            echo "  ⚠  Track $((mk_s + 1)) (markers) is digital silence. If you pressed keys on"
+            echo "     this call, check the Mark clips' track routing in OBS, then rerun with"
+            echo "     MARKER_TRACK=<the track they landed on>."
+        fi
         ( cd "$REPO_DIR" && python3 -m casting_call.marker_track \
-            "$tmp_t3" "$txt_out" \
+            "$tmp_mk" "$txt_out" \
             --whisper-bin "$WHISPER_BIN" \
             --model "$WHISPER_MODEL" \
             --metal-resources "$WHISPER_METAL_RESOURCES" \
@@ -389,7 +431,7 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 " "$txt_out" "$speakers_json" )
     fi
 
-    rm -f "$tmp_you" "$tmp_caller" "$tmp_t3" "$tmp_srt_you" "$tmp_srt_caller"
+    rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller"
 done
 
 echo ""

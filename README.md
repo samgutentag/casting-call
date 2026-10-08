@@ -2,8 +2,10 @@
 
 Turn call recordings into transcripts that know who said what, and how they said it.
 
-I record my calls with OBS into a single `.mkv`: my mic on one track, the far side
-(Chrome/Meet) on a second, in-call markers on a third, plus the Meet window on screen.
+I record my calls with OBS into a single `.mkv`: a master mix on Track 1, my mic on
+Track 2, computer audio (the far side in Chrome/Meet) on Track 3, and in-call markers
+on Track 4, plus the Meet window on screen. Recordings from before 2026-10-08 have
+three tracks (mic, far side, markers) and no master; `ripa` and `ripv` handle both.
 This repo is everything that happens after the call ends. It started as "split the
 tracks and run Whisper" and has grown into three capabilities that cover each way a
 recording can be useful (or broken).
@@ -31,10 +33,10 @@ into one attributed transcript.
 
 ## Markers
 
-Seven keys on a Stream Deck, each wired to a silent audio clip that lands on Track 3.
+Seven keys on a Stream Deck, each wired to a silent audio clip that lands on Track 4.
 Press one during a call and it shows up in the transcript as a `[MARKER]` line at that
 timestamp. Nobody on the call hears anything, and there is no syncing step, because all
-three tracks share one clock.
+the tracks share one clock.
 
 | Key | Type | Press it when |
 |---|---|---|
@@ -59,10 +61,10 @@ old flag/action/follow set.
 
 | Alias | Script | Does |
 |---|---|---|
-| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + auto-relabel if a timeline exists |
+| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording |
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
-| `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio mixed you=L / caller=R |
+| `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio is the master mix (legacy files: you=L / caller=R) |
 
 The aliases live in my gutils shell config, not here. Every script works without them:
 `bash bin/<script>.sh ...` from the repo root.
@@ -112,7 +114,7 @@ bin/               shell entry points (thin; the logic lives in the package)
 casting_call/      the Python package
   sample/locate/read/roster/timeline/transcript/review/coverage   speaker layer
   stitch.py        rolling-caption stitcher + CLI
-  markers.py       Track 3 marker phrases folded into the transcript
+  markers.py       marker-track phrases folded into the transcript
   digest.py        marker presses grouped into a per-call digest (JSON)
   tests/           pytest suite (fast, no fixtures on disk)
 docs/user-guide.html   the real documentation; start there

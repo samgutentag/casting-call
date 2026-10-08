@@ -106,11 +106,11 @@ cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pr
 <h2 id="vocab">3. Words you need first</h2>
 <dl class="defn">
   <dt>Track</dt>
-  <dd>One audio stream inside the recording. The rig records three: Track 1 (<code>0:a:0</code>) is your mic, Track 2 (<code>0:a:1</code>) is the far side, Track 3 (<code>0:a:2</code>) carries marker sounds only. The tools read tracks by number, not by channel-splitting a stereo mix.</dd>
+  <dd>One audio stream inside the recording. The rig records four: Track 1 (<code>0:a:0</code>) is the master mix, everything below summed by OBS; Track 2 (<code>0:a:1</code>) is your mic; Track 3 (<code>0:a:2</code>) is computer audio, meaning the far side in Meet plus the screen's own sound; Track 4 (<code>0:a:3</code>) carries marker sounds only. Recordings from before 2026-10-08 have three tracks and no master (Track 1 mic, Track 2 far side, Track 3 markers), and <code>ripa</code> still reads them. The tools read tracks by number, not by channel-splitting a stereo mix.</dd>
   <dt>You / Caller</dt>
-  <dd>The two speaker labels in a fresh transcript. <code>You</code> is your mic (Track 1). <code>Caller</code> is everyone on the far side (Track 2), lumped together until <code>rips</code> puts real names on them.</dd>
+  <dd>The two speaker labels in a fresh transcript. <code>You</code> is your mic (Track 2). <code>Caller</code> is everyone on the far side (Track 3, the computer audio), lumped together until <code>rips</code> puts real names on them.</dd>
   <dt>Marker</dt>
-  <dd>A moment you flagged during the call by pressing a Stream Deck button, which played a short sound onto Track 3. Seven buttons: <strong>topic</strong> (the conversation moved on), <strong>action for me</strong>, <strong>action for them</strong>, <strong>important</strong>, <strong>question</strong>, <strong>quote</strong>, and <strong>video</strong> (something on screen worth a screenshot). In the transcript each becomes a <code>[MARKER]</code> line at that timestamp, tagged with its type. The label is <code>MARKER</code>, not <code>MARK</code>, so it never collides with a real person named Mark.</dd>
+  <dd>A moment you flagged during the call by pressing a Stream Deck button, which played a short sound onto Track 4. Seven buttons: <strong>topic</strong> (the conversation moved on), <strong>action for me</strong>, <strong>action for them</strong>, <strong>important</strong>, <strong>question</strong>, <strong>quote</strong>, and <strong>video</strong> (something on screen worth a screenshot). In the transcript each becomes a <code>[MARKER]</code> line at that timestamp, tagged with its type. The label is <code>MARKER</code>, not <code>MARK</code>, so it never collides with a real person named Mark.</dd>
   <dt>Transcript</dt>
   <dd>A plain-text file of <code>[h:mm:ss] [Label] text</code> lines, sorted by time. Everything downstream reads and writes this one format.</dd>
   <dt>Dropout</dt>
@@ -128,25 +128,29 @@ cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pr
 <pre><code>ripa ~/calls/2026-07-24
 # or, without the alias:
 bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
-<p>For each recording it makes a folder named after the recording and puts everything there. The merged transcript is <code>&lt;name&gt;/&lt;name&gt;.txt</code> and a combined MP3 of all tracks mixed together is <code>&lt;name&gt;/&lt;name&gt;.mp3</code>, with a <code>parts/</code> subfolder holding each track on its own (<code>you.mp3</code>, <code>caller.mp3</code>, <code>markers.mp3</code>) and its own raw transcript. To build the merged transcript it pulls Track 1 and Track 2 out as mono audio, checks each for silence, transcribes the ones that have speech, and weaves them together. Then it reads Track 3 and folds your markers in at their timestamps. A recording that already has a transcript is skipped, so re-running the folder is safe and cheap.</p>
+<p>For each recording it makes a folder named after the recording and puts everything there. The merged transcript is <code>&lt;name&gt;/&lt;name&gt;.txt</code> and a combined mono MP3 of the whole call is <code>&lt;name&gt;/&lt;name&gt;.mp3</code> (the master track, Track 1, loudness-normalized; on an older three-track recording it is a mix of the separate tracks instead), with a <code>parts/</code> subfolder holding each track on its own (<code>you.mp3</code>, <code>caller.mp3</code>, <code>markers.mp3</code>) and its own raw transcript. To build the merged transcript it pulls your mic (Track 2) and the computer audio (Track 3) out as mono audio, checks each for silence, transcribes the ones that have speech, and weaves them together. Then it reads the marker track (Track 4) and folds your markers in at their timestamps. It picks the layout per file by counting audio tracks: four or more is the current rig, three is the pre-2026-10-08 rig, and two is that older rig without markers. A recording that already has a transcript is skipped, so re-running the folder is safe and cheap.</p>
 
 <figure>
   <div class="diagram">
-  <svg viewBox="0 0 640 250" role="img" aria-label="The recording's three audio tracks flow through ripa into one transcript. Track 1 becomes You lines, Track 2 becomes Caller lines, Track 3 becomes MARKER lines, all merged by time.">
+  <svg viewBox="0 0 640 280" role="img" aria-label="The recording's four audio tracks flow through ripa. Track 1, the master mix, becomes the combined MP3. Track 2 becomes You lines, Track 3 becomes Caller lines, Track 4 becomes MARKER lines, all merged by time into one transcript.">
     <text x="20" y="24" class="svg-label" font-size="11" font-weight="700" fill="#555">recording.mkv</text>
-    <rect x="20" y="34" width="150" height="40" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
-    <text x="30" y="52" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 1 = You</text>
-    <text x="30" y="66" class="svg-label" font-size="9" fill="#555">your mic (0:a:0)</text>
+    <rect x="20" y="34" width="150" height="40" rx="6" fill="#f4f5f7" stroke="#888"/>
+    <text x="30" y="52" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 1 = master</text>
+    <text x="30" y="66" class="svg-label" font-size="9" fill="#555">full mix → name.mp3 (0:a:0)</text>
     <rect x="20" y="82" width="150" height="40" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
-    <text x="30" y="100" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 2 = Caller</text>
-    <text x="30" y="114" class="svg-label" font-size="9" fill="#555">far side (0:a:1)</text>
-    <rect x="20" y="130" width="150" height="40" rx="6" fill="#fbf7ec" stroke="#b2741a"/>
-    <text x="30" y="148" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 3 = markers</text>
-    <text x="30" y="162" class="svg-label" font-size="9" fill="#555">button sounds (0:a:2)</text>
+    <text x="30" y="100" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 2 = You</text>
+    <text x="30" y="114" class="svg-label" font-size="9" fill="#555">your mic (0:a:1)</text>
+    <rect x="20" y="130" width="150" height="40" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
+    <text x="30" y="148" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 3 = Caller</text>
+    <text x="30" y="162" class="svg-label" font-size="9" fill="#555">far side + screen (0:a:2)</text>
+    <rect x="20" y="178" width="150" height="40" rx="6" fill="#fbf7ec" stroke="#b2741a"/>
+    <text x="30" y="196" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 4 = markers</text>
+    <text x="30" y="210" class="svg-label" font-size="9" fill="#555">button sounds (0:a:3)</text>
 
-    <line x1="170" y1="54"  x2="248" y2="95" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-    <line x1="170" y1="102" x2="248" y2="100" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-    <line x1="170" y1="150" x2="248" y2="105" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="170" y1="54"  x2="248" y2="90" stroke="#888" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+    <line x1="170" y1="102" x2="248" y2="98" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="170" y1="150" x2="248" y2="106" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="170" y1="198" x2="248" y2="114" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
 
     <rect x="250" y="80" width="96" height="44" rx="8" fill="#fff" stroke="#2f6f4f"/>
     <text x="298" y="100" text-anchor="middle" class="svg-label" font-size="12" font-weight="800" fill="#2f6f4f">ripa</text>
@@ -161,24 +165,26 @@ bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
     <text x="412" y="134" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:15] [You] sounds good</text>
     <text x="412" y="152" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:18] [Caller] talk soon</text>
 
-    <text x="20" y="210" class="svg-label" font-size="10" fill="#555">Every track shares one clock, so the merge lines up by timestamp with no syncing.</text>
-    <text x="20" y="228" class="svg-label" font-size="10" fill="#555">A silent track is skipped; its hallucinated lines never enter the transcript.</text>
+    <text x="20" y="246" class="svg-label" font-size="10" fill="#555">Every track shares one clock, so the merge lines up by timestamp with no syncing.</text>
+    <text x="20" y="264" class="svg-label" font-size="10" fill="#555">A silent track is skipped; its hallucinated lines never enter the transcript.</text>
     <defs>
       <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker>
     </defs>
   </svg>
   </div>
-  <figcaption>The three tracks are recorded together, so their timestamps already agree. That is why a marker pressed at 0:12 lands next to the 0:12 line with no alignment step.</figcaption>
+  <figcaption>The four tracks are recorded together, so their timestamps already agree. That is why a marker pressed at 0:12 lands next to the 0:12 line with no alignment step.</figcaption>
 </figure>
 
 <div class="warn">If the far-side track went silent for a long stretch, <code>ripa</code> warns that the capture likely dropped and tells you the timestamp, then points you at <code>ripcap</code>. The transcript is still produced from whatever real audio exists.</div>
+
+<div class="warn">If the marker track is digital silence (peak at or below -90 dB), <code>ripa</code> warns you. That usually means the Mark clips were routed to the wrong track in OBS, not that you never pressed a key. Find the track the clips landed on, delete the transcript, and rerun with <code>MARKER_TRACK=&lt;track number&gt;</code> (1-based), for example <code>MARKER_TRACK=3 ripa ~/calls/2026-10-08</code>.</div>
 
 <h2 id="commands">5. Commands and flags</h2>
 <table>
   <thead><tr><th>Command</th><th>Script</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every recording in a folder to its own <code>&lt;name&gt;/</code> folder (transcript + combined MP3 + per-track <code>parts/</code>), markers folded in.</td></tr>
-    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: re-encode to a smaller H.265 <code>.mp4</code> in the recording's <code>&lt;name&gt;/</code> folder, you on the left channel, caller on the right.</td></tr>
+    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: re-encode to a smaller H.265 <code>.mp4</code> in the recording's <code>&lt;name&gt;/</code> folder, with the master mix as its audio (older recordings: you on the left channel, caller on the right).</td></tr>
     <tr><td><code>rips rec --region ...</code></td><td><code>extract_speakers.sh</code></td><td>OCR the captions, put real names on <code>Caller</code> lines.</td></tr>
     <tr><td><code>ripcap rec --region ...</code></td><td><code>stitch_captions.sh</code></td><td>Rebuild the far-side words from captions when its audio failed.</td></tr>
   </tbody>
@@ -244,8 +250,8 @@ bash bin/stitch_captions.sh recording.mkv --region 120,1850,900,180</code></pre>
 <div class="warn">The caption region is fixed for the whole run, so the Meet window has to stay in one place and size during the call. If it moved or resized, a single region will not cover the recording, and you have to recover one layout at a time.</div>
 
 <h2 id="extras">8. Render video <span class="tag">ripv</span></h2>
-<p><code>ripv</code> is optional and only for when you want to watch a call back. It rebuilds the audio into one stereo track, you on the left channel and the caller on the right, re-encodes the video to H.265 (much smaller than the source, and playable in QuickTime/IINA on macOS), and writes the <code>.mp4</code> into the recording's own <code>&lt;name&gt;/</code> folder, next to what <code>ripa</code> produces. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
-<pre><code>ripv ~/calls/2026-07-24     # -> &lt;name&gt;/&lt;name&gt;.mp4, you=left / caller=right</code></pre>
+<p><code>ripv</code> is optional and only for when you want to watch a call back. Its audio is the master mix (Track 1), stereo as OBS recorded it, so you hear the call the way you heard it. An older three-track recording has no master, so there it rebuilds the audio into one stereo track, you on the left channel and the caller on the right. Either way it re-encodes the video to H.265 (much smaller than the source, and playable in QuickTime/IINA on macOS), and writes the <code>.mp4</code> into the recording's own <code>&lt;name&gt;/</code> folder, next to what <code>ripa</code> produces. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
+<pre><code>ripv ~/calls/2026-07-24     # -> &lt;name&gt;/&lt;name&gt;.mp4, master mix audio</code></pre>
 
 <h2 id="faq">9. Good to know</h2>
 <dl class="defn">
@@ -258,7 +264,7 @@ bash bin/stitch_captions.sh recording.mkv --region 120,1850,900,180</code></pre>
   <dt>Why is there a repeated "Thank you" or "Amara.org" line in an old transcript?</dt>
   <dd>Those are Whisper hallucinating on silence. The current pipeline strips them automatically inside any silent span, so fresh transcripts should be clean. If you see them, the audio there was dead, which is a hint to check for a dropout.</dd>
   <dt>Do I have to say the marker names out loud?</dt>
-  <dd>No. You press the Stream Deck button silently; the sound goes onto Track 3, which the far side never hears. Only the <code>[MARKER]</code> line appears in the transcript.</dd>
+  <dd>No. You press the Stream Deck button silently; the sound goes onto Track 4 with monitoring off, so nobody on the call hears it. Only the <code>[MARKER]</code> line appears in the transcript.</dd>
   <dt>Does anything leave my machine?</dt>
   <dd>No. Whisper and tesseract run locally. There are no accounts and no uploads.</dd>
 </dl>

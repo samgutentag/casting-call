@@ -15,3 +15,8 @@ docs/superpowers/**/*.html
 
 # personal roster (copy from speakers_roster.example.json)
 speakers_roster.json
+
+# throwaway animatic renders and the TTS key
+animatic/
+.env
+brag-output*/

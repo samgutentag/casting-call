@@ -129,11 +129,12 @@ def normtok(t):
     return re.sub(r'[^a-z0-9]', '', t.lower())
 
 
-def merge(committed, frame):
-    """Append frame's new tail to committed, aligned on the matching block
-    that reaches furthest into committed (robust to interim OCR revisions)."""
+def new_tail_start(committed, frame):
+    """Index into frame where its new tokens begin, aligned on the matching
+    block that reaches furthest into committed (robust to interim OCR
+    revisions). 0 when there is no trustworthy overlap."""
     if not committed:
-        return frame[:]
+        return 0
     off = max(0, len(committed) - TAILWIN)
     tail = committed[off:]
     cn = [normtok(t) for t in tail]
@@ -144,15 +145,20 @@ def merge(committed, frame):
         if size >= ANCHOR and (best is None or a + size > best[0] + best[2]):
             best = (a, b, size)
     if best is None:
-        return committed + frame
-    a, b, size = best
-    return committed + frame[b + size:]
+        return 0
+    return best[1] + best[2]
 
 
-def dedupe_stutter(tokens):
+def merge(committed, frame):
+    """Append frame's new tail to committed (see new_tail_start)."""
+    return committed + frame[new_tail_start(committed, frame):]
+
+
+def dedupe_stutter(tokens, key=None):
     """Collapse immediately-repeated phrases (residual interim-caption
-    stutter), e.g. 'like Yeah I like Yeah I think' -> 'like Yeah I think'."""
-    nt = [normtok(t) for t in tokens]
+    stutter), e.g. 'like Yeah I like Yeah I think' -> 'like Yeah I think'.
+    `key` maps an item to its token, for lists that carry extra data per token."""
+    nt = [normtok(key(t) if key else t) for t in tokens]
     changed = True
     while changed:
         changed = False

@@ -151,8 +151,8 @@ or Stream Deck that only a human can do. The flow the whole thing produces is in
 <h2>What you end up with</h2>
 
 <p>OBS records your screen plus four audio tracks into one <code>.mkv</code>. Track 1 is the
-master mix of everything, Track 2 is your mic, Track 3 is the computer audio (Chrome, where Meet
-runs, plus the screen capture), and Track 4 is silent except for the short "mark topic" / "mark
+master mix of everything, Track 2 is your mic, Track 3 is system audio (everything that is not your
+mic or a marker: Chrome where Meet runs, Slack, Zoom, Roam, Safari), and Track 4 is silent except for the short "mark topic" / "mark
 action for me" clips a Stream Deck button fires. After the call, one command splits the
 tracks, transcribes them, cleans up the junk Whisper invents on silence, and folds your markers in
 as <code>[MARKER]</code> lines. If the far side ever drops out, the captions on screen are the backup.</p>
@@ -480,17 +480,27 @@ mix (Track 1) as its audio.</li>
 
 <h2>Part 7: When the far side drops out</h2>
 
-<p>Chrome's audio capture can die mid-call and record silence from that point on. The pipeline
-watches for it: if Track 3 goes quiet for a sustained stretch, it prints a warning with the
-timestamp and points you at the recovery tool. The lines Whisper would have invented on that dead
-audio are stripped automatically, so the transcript does not fill up with fake "thank you" and
-"subtitles by" junk.</p>
+<p>The system-audio capture can die mid-call and record silence from that point on. The lines
+Whisper would have invented on that dead audio are stripped automatically, so the transcript does
+not fill up with fake "thank you" and "subtitles by" junk.</p>
 
-<p>To get the lost words back, the Meet captions on screen are the source:</p>
+<p>For Google Meet calls the words come back on their own. Any stretch of a minute or more where
+Track 3 is quiet gets the Meet captions read over just that stretch. If they show someone other
+than you talking, the capture dropped, and their caption lines are spliced into the transcript as
+<code>[Caller]</code> lines. The transcript from before the splice is kept as
+<code>parts/pre-caption-splice.txt</code> and the raw caption lines as <code>parts/captions.txt</code>.
+If the captions show only you, the quiet was real and nothing changes.</p>
+
+<p>It finds the captions by Meet's red end-call button, which always sits right under them, so you
+can move and resize the Meet window during the call. What it needs: captions turned on, and the
+Meet window on screen for the stretch that dropped. Frames where Meet is hidden are skipped.
+Caption speaker names are approximate when people talk over each other, which is fine for lines
+that are labeled <code>[Caller]</code> anyway. <code>CAPTION_BACKUP=0 ripa ...</code> turns the
+check off.</p>
+
+<p>Calls in Zoom, Slack or Roam are not covered: <code>ripa</code> still drops the junk and the
+transcript has a gap. To rebuild a whole recording from a fixed caption region by hand:</p>
 <pre><code>bash bin/stitch_captions.sh &lt;recording&gt; --region x,y,w,h</code></pre>
-<p>The one catch, learned the hard way: the caption region is fixed, so the Meet window has to stay
-in one place and size for the whole call. If you move or resize it, a single region will not cover
-the recording, and you are into recovering one layout at a time. Park the Meet window and leave it.</p>
 
 <p class="meta">casting-call · new-machine setup · 2026-07-24</p>
 <!-- ===== CONTENT END ===== -->

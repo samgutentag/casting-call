@@ -5,7 +5,8 @@
 # The rig records the screen plus FOUR audio tracks into one .mkv:
 #   Track 1 (stream 0:a:0) = master mix (everything below, summed by OBS)
 #   Track 2 (stream 0:a:1) = your mic (Elgato Wave)
-#   Track 3 (stream 0:a:2) = computer audio: the far side (Chrome / Meet) + screen
+#   Track 3 (stream 0:a:2) = system audio: everything that is not your mic or the
+#                            markers (Chrome/Meet, Slack, Zoom, Roam, Safari...)
 #   Track 4 (stream 0:a:3) = Stream Deck marker clips
 #
 # Recordings from before 2026-10-08 have three tracks (mic, far side, markers)
@@ -23,8 +24,8 @@
 #
 # Flow per recording:
 #   extract each track -> detect silence -> transcribe (skip a dead track) ->
-#   weave by timestamp -> strip silence/junk hallucinations -> relabel if a
-#   speakers.json timeline exists.
+#   weave by timestamp -> strip silence/junk hallucinations -> patch a far-side
+#   dropout from Meet captions -> markers -> relabel if a speakers.json exists.
 #
 # Usage: extract_audio_stereo.sh [directory] [whisper_model_path]
 # Output: <name>/<name>.txt (merged) + <name>/<name>.mp3 (combined) + <name>/parts/<track>.{mp3,txt}
@@ -45,6 +46,14 @@ CALLER_LABEL="Caller"
 SILENCE_DBFS=-50
 SILENCE_CLEAN_MIN=15
 SILENCE_GAP_SECONDS=300
+
+# Caption backup. Any far-side silence at/above CAPTION_GAP_SECONDS is checked
+# against Google Meet's on-screen captions, which only read the video over that
+# window. If the captions show someone else talking, the system-audio capture
+# dropped and their words are spliced in as [Caller] lines. CAPTION_BACKUP=0
+# turns it off. Meet only: other apps' captions are not read.
+CAPTION_GAP_SECONDS=60
+CAPTION_BACKUP="${CAPTION_BACKUP:-1}"
 
 WHISPER_BIN="whisper-cli"
 WHISPER_METAL_RESOURCES="$(brew --prefix whisper-cpp)/share/whisper-cpp"
@@ -129,6 +138,25 @@ longest_span() {
             d=p[2]-p[1]; if(d>mdur){mdur=d; mstart=p[1]} }
         if(mdur>=0) printf "%s %s", mstart, mdur
     }'
+}
+
+# Spans at/above min_dur from a spans string, same "start:end,..." shape.
+long_spans() {
+    awk -v spans="$1" -v min="$2" 'BEGIN{
+        n=split(spans, a, ","); sep=""
+        for(i=1;i<=n;i++){ if(a[i]=="")continue; split(a[i], p, ":");
+            if(p[2]-p[1]>=min){ printf "%s%s", sep, a[i]; sep="," } }
+    }'
+}
+
+# A python3 with the OCR layer (numpy, pillow, pytesseract), or empty.
+ocr_python() {
+    local py
+    for py in python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+        if command -v "$py" &>/dev/null && "$py" -c 'import numpy, PIL, pytesseract' 2>/dev/null; then
+            echo "$py"; return
+        fi
+    done
 }
 
 # Fraction (0..1) of duration covered by silence.
@@ -354,8 +382,12 @@ for input_file in "${recordings[@]}"; do
     read -r gap_start gap_dur <<< "$(longest_span "$spans_caller")"
     if [ -n "$gap_dur" ] && awk -v d="$gap_dur" -v t="$SILENCE_GAP_SECONDS" 'BEGIN{exit !(d>=t)}'; then
         echo "  ⚠  Far side (${CALLER_LABEL}) went silent for $(fmt_hms "$gap_dur") starting at $(fmt_hms "$gap_start")."
-        echo "     If the call was still going, the capture dropped. Recover from captions:"
-        echo "       ripcap $input_file --region <x,y,w,h>"
+        if [ "$CAPTION_BACKUP" = "1" ]; then
+            echo "     Checking Meet captions for that stretch after transcription."
+        else
+            echo "     If the call was still going, the capture dropped. Recover from captions:"
+            echo "       ripcap $input_file --region <x,y,w,h>"
+        fi
     fi
 
     # Transcribe each track (dead tracks are skipped inside transcribe_track).
@@ -376,6 +408,24 @@ for input_file in "${recordings[@]}"; do
         --you-label "$YOU_LABEL" --caller-label "$CALLER_LABEL" \
         --silent-you "$spans_you" --silent-caller "$spans_caller" \
         | sed 's/^/  → /' )
+
+    # Caption backup: read Meet's captions over each long far-side silence, and
+    # splice them in where they show someone else was talking. Runs after the
+    # clean step, which has already dropped whisper's inventions on that silence.
+    caption_windows=$(long_spans "$spans_caller" "$CAPTION_GAP_SECONDS")
+    if [ "$CAPTION_BACKUP" = "1" ] && [ -n "$caption_windows" ]; then
+        if ! has_stream "$input_file" v:0; then
+            echo "  ⚠  Far side went quiet but there is no video to read captions from."
+        elif ! command -v tesseract &>/dev/null || [ -z "$(ocr_python)" ]; then
+            echo "  ⚠  Far side went quiet; caption backup needs tesseract + pytesseract."
+            echo "     brew install tesseract && pip3 install pytesseract --break-system-packages"
+        else
+            echo "  → Reading Meet captions over far-side silence..."
+            ( cd "$REPO_DIR" && "$(ocr_python)" -m casting_call.backup \
+                "$input_file" "$txt_out" --windows "$caption_windows" \
+                --parts "$parts_dir" --caller-label "$CALLER_LABEL" | sed 's/^/  → /' )
+        fi
+    fi
 
     # The marker track (Track 4 now, Track 3 before 2026-10-08): pre-canned
     # marker phrases, if the rig recorded them.

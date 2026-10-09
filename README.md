@@ -3,8 +3,8 @@
 Turn call recordings into transcripts that know who said what, and how they said it.
 
 I record my calls with OBS into a single `.mkv`: a master mix on Track 1, my mic on
-Track 2, computer audio (the far side in Chrome/Meet) on Track 3, and in-call markers
-on Track 4, plus the Meet window on screen. Recordings from before 2026-10-08 have
+Track 2, system audio (everything that isn't my mic or a marker: Chrome/Meet, Slack,
+Zoom, Roam) on Track 3, and in-call markers on Track 4, plus the Meet window on screen. Recordings from before 2026-10-08 have
 three tracks (mic, far side, markers) and no master; `ripa` and `ripv` handle both.
 This repo is everything that happens after the call ends. It started as "split the
 tracks and run Whisper" and has grown into three capabilities that cover each way a
@@ -26,10 +26,14 @@ speaking. Sample the video, OCR the caption band, fuzzy-match names against your
 roster, build a speaker timeline, and rewrite `Caller` lines with real names. Includes
 an interactive review step for names it will not guess at.
 
-**3. Recover from a dead channel** (`ripcap`). When the far-end audio never made it to
-disk (it happens; ask me how I know, twice), the captions burned into the video are the
-words. The stitcher OCRs every caption frame and merges the rolling, overlapping text
-into one attributed transcript.
+**3. Recover from a dead channel.** When the far-end audio never made it to disk (it
+happens; ask me how I know, twice), the captions burned into the video are the words.
+`ripa` does this on its own for Google Meet: any far-side silence of a minute or more
+gets its captions read, and if they show someone else talking, their words are spliced
+into the transcript as `[Caller]` lines (original kept in `parts/pre-caption-splice.txt`).
+It finds the caption panel by Meet's red end-call button, so the window can move
+mid-call. Captions are only a backup; a call with working audio never touches them.
+`ripcap` still stitches a whole recording from captions by hand, given a fixed region.
 
 ## Markers
 
@@ -61,7 +65,7 @@ old flag/action/follow set.
 
 | Alias | Script | Does |
 |---|---|---|
-| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording |
+| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + patch far-side dropouts from Meet captions + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording; `CAPTION_BACKUP=0` skips the caption check |
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
 | `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio is the master mix (legacy files: you=L / caller=R) |
@@ -78,7 +82,8 @@ rips recording.mkv --region 120,1850,900,180 \
      --transcript recording/recording.txt          # put real names on the Caller lines
 ```
 
-And when the far-side audio never made it to disk:
+When the far-side audio drops on a Meet call, `ripa` patches it from the captions by
+itself. For anything else (another app, or rebuilding a whole call from captions):
 
 ```bash
 ripcap recording.mkv --region 120,1850,900,180     # words, from the captions

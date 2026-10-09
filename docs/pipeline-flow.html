@@ -260,11 +260,12 @@ its moment. No sidecar file, no anchor, no plugin. If that track comes out as di
 <code>ripa</code> warns that the Mark clips were probably routed to another track in OBS; rerun with
 <code>MARKER_TRACK=&lt;track&gt;</code> to read them from where they landed.</p>
 
-<p><strong>Dead-channel fallback.</strong> The silence check flags a sustained drop on the far-side
-track (Chrome App Audio Capture does this). When that happens the words only exist in the on-screen
-captions, so <code>ripcap</code> OCRs them and rebuilds the far side. The catch your first real
-recording exposed: the region is fixed, so the Meet window has to stay put. Move or resize it
-mid-call and one region no longer covers the whole thing.</p>
+<p><strong>Dead-channel fallback.</strong> The system-audio capture on Track 3 can die mid-call.
+When it does, the words only exist in the on-screen captions. <code>ripa</code> reads Meet's
+captions over every far-side silence of a minute or more, and splices them in as
+<code>[Caller]</code> lines when they show someone else talking. The fixed-region problem your
+first real recording exposed is gone: each frame is anchored on Meet's red end-call button, so the
+window can move mid-call. Meet only; <code>ripcap</code> remains for a hand-driven rebuild.</p>
 
 <h2>What changed, and why</h2>
 

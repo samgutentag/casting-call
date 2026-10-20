@@ -54,6 +54,10 @@ SILENCE_GAP_SECONDS=300
 # turns it off. Meet only: other apps' captions are not read.
 CAPTION_GAP_SECONDS=60
 CAPTION_BACKUP="${CAPTION_BACKUP:-1}"
+# A far side that stops producing transcript lines for this long is checked too,
+# even when its track is not silent: background music on a dead capture keeps
+# the level up, so silence detection alone never fires (2026-10-20 Corey call).
+CAPTION_TEXT_GAP_SECONDS=120
 
 WHISPER_BIN="whisper-cli"
 WHISPER_METAL_RESOURCES="$(brew --prefix whisper-cpp)/share/whisper-cpp"
@@ -410,9 +414,13 @@ for input_file in "${recordings[@]}"; do
         | sed 's/^/  → /' )
 
     # Caption backup: read Meet's captions over each long far-side silence, and
+    # over each long stretch where the far side produced no lines at all, and
     # splice them in where they show someone else was talking. Runs after the
     # clean step, which has already dropped whisper's inventions on that silence.
-    caption_windows=$(long_spans "$spans_caller" "$CAPTION_GAP_SECONDS")
+    caption_windows=$( cd "$REPO_DIR" && python3 -m casting_call.gaps "$txt_out" \
+        --label "$CALLER_LABEL" --min "$CAPTION_TEXT_GAP_SECONDS" \
+        --duration "$(get_duration "$input_file")" \
+        --also "$(long_spans "$spans_caller" "$CAPTION_GAP_SECONDS")" )
     if [ "$CAPTION_BACKUP" = "1" ] && [ -n "$caption_windows" ]; then
         if ! has_stream "$input_file" v:0; then
             echo "  ⚠  Far side went quiet but there is no video to read captions from."
@@ -420,7 +428,7 @@ for input_file in "${recordings[@]}"; do
             echo "  ⚠  Far side went quiet; caption backup needs tesseract + pytesseract."
             echo "     brew install tesseract && pip3 install pytesseract --break-system-packages"
         else
-            echo "  → Reading Meet captions over far-side silence..."
+            echo "  → Reading Meet captions where the far side went quiet or stopped transcribing..."
             ( cd "$REPO_DIR" && "$(ocr_python)" -m casting_call.backup \
                 "$input_file" "$txt_out" --windows "$caption_windows" \
                 --parts "$parts_dir" --caller-label "$CALLER_LABEL" | sed 's/^/  → /' )
@@ -439,6 +447,11 @@ for input_file in "${recordings[@]}"; do
     # marker_track finds the presses with silencedetect (the track is silence by
     # construction, so this is exact) and gives whisper one short slice per press,
     # where there is nothing to merge with.
+    # OBS in Safe Mode (after a crash) runs without obs-websocket, so the Stream
+    # Deck cannot play a single clip and the call looks like nothing was pressed.
+    safe_note=$( cd "$REPO_DIR" && python3 -m casting_call.obslog "$input_file" )
+    [ -n "$safe_note" ] && echo "  ⚠  $safe_note"
+
     if [ -n "$mk_s" ]; then
         echo "  → Parsing markers (Track $((mk_s + 1)))..."
         # A marker track at digital silence usually means the Stream Deck clips

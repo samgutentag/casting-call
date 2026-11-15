@@ -20,6 +20,15 @@
 # full-resolution PNG at <name>/markers/marker-HHMMSS.png and a row in
 # <name>/markers.json, taken here because ripo trashes the .mkv later.
 #
+# P4next card backup (2026-11-14 on): takes pulled off the card with
+# pull_card.sh (ripcard) sit in ~/Desktop/P4next-takes (CARD_INBOX=<path>). The
+# take matching each recording is linked into <name>/card/ first. A mounted
+# card is ignored. With a take there, the card is lined up with
+# the video (<name>/align.json), OBS dropouts on Tracks 2 and 3 are filled from
+# MIC1 and USB before transcription, a dead Track 4 is rebuilt from SOUND_PAD,
+# PLAY-key marks become markers, and a health line per track lands in
+# parts/health.txt. With no card take, none of this runs.
+#
 # The .mkv is the canonical recording and is read directly (no remux needed for
 # transcription). For a playable video, render one separately with
 # convert_video.sh (ripv).
@@ -111,6 +120,11 @@ INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
 shopt -s nullglob
 recordings=("$INPUT_DIR"/*.mkv "$INPUT_DIR"/*.mp4)
 shopt -u nullglob
+
+CARD_INBOX="${CARD_INBOX:-$HOME/Desktop/P4next-takes}"
+if [ "${#recordings[@]}" -gt 0 ] && [ -d "$CARD_INBOX" ]; then
+    ( cd "$REPO_DIR" && python3 -m casting_call.card copy "$INPUT_DIR" --inbox "$CARD_INBOX" )
+fi
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 get_duration() {
@@ -322,6 +336,9 @@ for input_file in "${recordings[@]}"; do
     tmp_mk="/tmp/whisper_${filename}_markers.wav"
     tmp_srt_you="/tmp/whisper_${filename}_you.srt"
     tmp_srt_caller="/tmp/whisper_${filename}_caller.srt"
+    tmp_card_header="/tmp/whisper_${filename}_card_header.txt"
+    tmp_card_cues="/tmp/whisper_${filename}_card_cues.txt"
+    tmp_card_filled="/tmp/whisper_${filename}_card_filled.txt"
 
     echo "[$current/$total] $filename"
 
@@ -386,6 +403,23 @@ for input_file in "${recordings[@]}"; do
         echo "  ✗ Extraction failed for $filename; skipping."; continue
     fi
 
+    # Card backup: fill OBS dropouts in the track WAVs before anything measures
+    # or transcribes them. Skipped entirely without a card take.
+    card_cues=""; card_filled_caller=""
+    rm -f "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled"
+    if [ -d "$rec_dir/card" ]; then
+        echo "  → Card take found; lining it up and checking OBS for dropouts..."
+        mk_arg=()
+        [ -n "$mk_s" ] && mk_arg=(--markers "$tmp_mk")
+        ( cd "$REPO_DIR" && python3 -m casting_call.fill "$rec_dir" \
+            --video "$input_file" --you "$tmp_you" --caller "$tmp_caller" "${mk_arg[@]}" \
+            --report "$parts_dir/health.txt" --header "$tmp_card_header" \
+            --cues-out "$tmp_card_cues" --filled-caller-out "$tmp_card_filled" \
+            | sed 's/^/  → /' )
+        card_cues=$(cat "$tmp_card_cues" 2>/dev/null)
+        card_filled_caller=$(cat "$tmp_card_filled" 2>/dev/null)
+    fi
+
     # Detect silence BEFORE transcribing: spans clean hallucinations, and a
     # sustained one flags a probable dropout.
     spans_you=$(silent_spans "$tmp_you" "$SILENCE_DBFS" "$SILENCE_CLEAN_MIN")
@@ -428,7 +462,8 @@ for input_file in "${recordings[@]}"; do
     caption_windows=$( cd "$REPO_DIR" && python3 -m casting_call.gaps "$txt_out" \
         --label "$CALLER_LABEL" --min "$CAPTION_TEXT_GAP_SECONDS" \
         --duration "$(get_duration "$input_file")" \
-        --also "$(long_spans "$spans_caller" "$CAPTION_GAP_SECONDS")" )
+        --also "$(long_spans "$spans_caller" "$CAPTION_GAP_SECONDS")" \
+        --minus "$card_filled_caller" )
     if [ "$CAPTION_BACKUP" = "1" ] && [ -n "$caption_windows" ]; then
         if ! has_stream "$input_file" v:0; then
             echo "  ⚠  Far side went quiet but there is no video to read captions from."
@@ -483,6 +518,7 @@ for input_file in "${recordings[@]}"; do
             --model "$WHISPER_MODEL" \
             --metal-resources "$WHISPER_METAL_RESOURCES" \
             --mode "$MARKER_MODE" \
+            --extra-marks "$card_cues" \
             "${frame_args[@]}" \
             --parts-out "$parts_dir/markers.txt" | sed 's/^/  → /' )
     fi
@@ -510,7 +546,14 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 " "$txt_out" "$speakers_json" )
     fi
 
-    rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller"
+    # Header naming each track's source and the card alignment. Last, because
+    # every step above rewrites the transcript from its timestamped lines only.
+    if [ -s "$tmp_card_header" ]; then
+        cat "$tmp_card_header" "$txt_out" > "$txt_out.tmp" && mv "$txt_out.tmp" "$txt_out"
+    fi
+
+    rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller" \
+        "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled"
 done
 
 echo ""

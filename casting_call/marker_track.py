@@ -249,6 +249,33 @@ def markers_from_track(audio_path, whisper_bin, model, metal_resources=None,
     return markers
 
 
+def merge_cue_marks(markers, cue_times, within=MERGE_WITHIN):
+    """Add the card's PLAY-key marks as `marker` presses, in time order.
+
+    A PLAY mark within `within` seconds of a pad press is the same moment
+    marked twice (the habit is pad A, and PLAY is the fallback), so it is
+    dropped rather than doubled.
+    """
+    out = list(markers)
+    for t in sorted(cue_times):
+        if any(abs(float(m.get("at", m["t"])) - t) < within for m in out):
+            continue
+        out.append({"t": int(t), "at": t, "type": SINGLE_TYPE, "text": SINGLE_TYPE})
+    out.sort(key=lambda m: float(m.get("at", m["t"])))
+    return out
+
+
+def parse_times(text):
+    """'12.5,300.25' -> [12.5, 300.25]. Blank or junk entries are skipped."""
+    out = []
+    for part in (text or "").split(","):
+        try:
+            out.append(float(part))
+        except ValueError:
+            continue
+    return out
+
+
 format_ts = frame_grab.format_ts
 
 
@@ -278,6 +305,9 @@ def main(argv=None):
                     help="where marker-HHMMSS.png frames go (needs --video)")
     ap.add_argument("--json-out", default=None,
                     help="write markers.json (time, type, frame per press) here")
+    ap.add_argument("--extra-marks", default="",
+                    help="more press times on the video timeline, 't,t,...' "
+                         "(the card's PLAY-key marks)")
     args = ap.parse_args(argv)
 
     def tick(n, total, start):
@@ -303,6 +333,14 @@ def main(argv=None):
             f"[{format_ts(s)}] [T3] {parts_label(s, e, t)}\n"
             for (s, e), t in zip(bursts, texts)
         ), encoding="utf-8")
+
+    cues = parse_times(args.extra_marks)
+    if cues:
+        before = len(markers)
+        markers = merge_cue_marks(markers, cues)
+        added = len(markers) - before
+        print(f"card PLAY marks: {len(cues)} found, {added} added, "
+              f"{len(cues) - added} already a pad press")
 
     if not markers:
         print("no markers recognized on the marker track")

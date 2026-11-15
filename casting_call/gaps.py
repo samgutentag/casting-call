@@ -14,7 +14,8 @@ backup.py reads the captions, sees no one else talking, and splices nothing.
 
 Usage:
     python3 -m casting_call.gaps <transcript.txt> --label Caller \\
-        --min 120 --duration 2139 [--also "312.5:871.0,1500:1620"]
+        --min 120 --duration 2139 [--also "312.5:871.0,1500:1620"] \\
+        [--minus "400:460"]
 Prints the merged windows as "start:end,..." (empty if none).
 """
 
@@ -52,6 +53,26 @@ def merge_windows(*groups):
     return out
 
 
+def subtract_windows(spans, covered):
+    """Parts of `spans` not inside any `covered` span (the card filled those)."""
+    out = []
+    for a, b in spans:
+        pieces = [(a, b)]
+        for c, d in sorted(covered):
+            nxt = []
+            for x, y in pieces:
+                if d <= x or c >= y:
+                    nxt.append((x, y))
+                    continue
+                if c > x:
+                    nxt.append((x, c))
+                if d < y:
+                    nxt.append((d, y))
+            pieces = nxt
+        out.extend(p for p in pieces if p[1] - p[0] > 0)
+    return out
+
+
 def format_windows(spans):
     return ','.join(f'{a:.3f}:{b:.3f}' for a, b in spans)
 
@@ -65,11 +86,14 @@ def main(argv=None):
     ap.add_argument('--min', type=float, default=120.0)
     ap.add_argument('--duration', type=float, required=True)
     ap.add_argument('--also', default='', help='spans to union in, "start:end,..."')
+    ap.add_argument('--minus', default='',
+                    help='spans already covered by the card, "start:end,..."')
     args = ap.parse_args(argv)
 
     entries = parse_transcript(Path(args.transcript).read_text())
     gaps = transcript_gaps(entries, args.label, args.min, args.duration)
-    print(format_windows(merge_windows(gaps, parse_windows(args.also))))
+    windows = merge_windows(gaps, parse_windows(args.also))
+    print(format_windows(subtract_windows(windows, parse_windows(args.minus))))
     return 0
 
 

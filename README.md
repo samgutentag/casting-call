@@ -37,35 +37,44 @@ mid-call. Captions are only a backup; a call with working audio never touches th
 
 ## Markers
 
-Seven keys on a Stream Deck, each wired to a silent audio clip that lands on Track 4.
-Press one during a call and it shows up in the transcript as a `[MARKER]` line at that
-timestamp. Nobody on the call hears anything, and there is no syncing step, because all
-the tracks share one clock.
+One button, one marker. Pad A on the Zoom PodTrak P4next plays a short clip that says
+"marker" onto the P4next's sound pads channel, which OBS records as Track 4. Press it
+whenever a moment matters and it shows up in the transcript as `[0:12:34] [MARKER] marker`.
+Nobody on the call hears it, and there is no syncing step, because all the tracks share
+one clock.
 
-| Key | Type | Press it when |
+| Button | Type | Press it when |
 |---|---|---|
-| Mark Topic | `topic` | the conversation moves to a new subject |
-| Mark Action Me | `action-me` | you just picked up something to do |
-| Mark Action Them | `action-them` | the far side owes you something |
-| Important | `important` | it matters and fits nothing else |
-| Question | `question` | you have a follow-up (say it into your muted mic right after) |
-| Quote | `quote` | worth repeating verbatim |
-| Video | `video` | something on screen worth a screenshot |
+| P4next pad A | `marker` | anything on the call is worth coming back to |
 
-Both action clips say the word "action", so the parser checks "for them" and "for me"
-before falling back to a bare `action` type. That fallback has no key. It only catches a
-press where Whisper ate the trailing word, and it surfaces as owner-unknown instead of
-landing on the wrong person's list (which is the failure you would never notice).
+For every press, `ripa` also saves:
 
-Wiring the OBS sources and the Stream Deck keys is in the
-[setup guide](docs/setup-guide.html), including a migration section if you already ran the
-old flag/action/follow set.
+- a full-resolution PNG of the screen at that instant, `<name>/markers/marker-HHMMSS.png`,
+  taken from the `.mkv` before `ripo` trashes it
+- a row in `<name>/markers.json` with the press time, type and frame path
+
+The process-transcript skill reads those to summarize the conversation around each press
+(`casting_call.digest` gives `marker` presses a 90 second window either side) and to show
+the screen grab next to it.
+
+Pad presses are found by silence detection alone; Whisper is not involved. Two presses
+within 1.5 seconds count as one, and clicks shorter than 0.15 seconds are ignored.
+
+### Older recordings
+
+Calls recorded before 2026-11-14 used seven Stream Deck keys (`topic`, `action-me`,
+`action-them`, `important`, `question`, `quote`, `video`), each a spoken clip that Whisper
+identifies. `ripa` still reads them: it transcribes the first three presses, and any
+Stream Deck phrase there switches the whole track to the old seven-type parsing.
+`MARKER_MODE=single` or `MARKER_MODE=legacy` forces one or the other.
+
+Clip generation and P4next pad setup are in the [setup guide](docs/setup-guide.html).
 
 ## Commands
 
 | Alias | Script | Does |
 |---|---|---|
-| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + patch far-side dropouts from Meet captions + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording; `CAPTION_BACKUP=0` skips the caption check |
+| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + patch far-side dropouts from Meet captions + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording; `MARKER_MODE=single\|legacy` forces the marker rig; `CAPTION_BACKUP=0` skips the caption check |
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
 | `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio is the master mix (legacy files: you=L / caller=R) |

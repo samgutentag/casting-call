@@ -7,12 +7,18 @@
 #   Track 2 (stream 0:a:1) = your mic (Elgato Wave)
 #   Track 3 (stream 0:a:2) = system audio: everything that is not your mic or the
 #                            markers (Chrome/Meet, Slack, Zoom, Roam, Safari...)
-#   Track 4 (stream 0:a:3) = Stream Deck marker clips
+#   Track 4 (stream 0:a:3) = marker presses: the P4next sound pads (one clip that
+#                            says "marker", 2026-11-14 on) or, on older files,
+#                            the seven Stream Deck clips
 #
 # Recordings from before 2026-10-08 have three tracks (mic, far side, markers)
 # and no master. The layout is picked per file from its audio track count, so
 # old recordings still transcribe. MARKER_TRACK=<1-based track> overrides where
 # the markers are read from, for a one-off recorded with the clips misrouted.
+# MARKER_MODE=single|legacy forces which marker rig the track came from; the
+# default (auto) decides from the first few presses. Every press also gets a
+# full-resolution PNG at <name>/markers/marker-HHMMSS.png and a row in
+# <name>/markers.json, taken here because ripo trashes the .mkv later.
 #
 # The .mkv is the canonical recording and is read directly (no remux needed for
 # transcription). For a playable video, render one separately with
@@ -58,6 +64,8 @@ CAPTION_BACKUP="${CAPTION_BACKUP:-1}"
 # even when its track is not silent: background music on a dead capture keeps
 # the level up, so silence detection alone never fires (2026-10-20 Corey call).
 CAPTION_TEXT_GAP_SECONDS=120
+
+MARKER_MODE="${MARKER_MODE:-auto}"
 
 WHISPER_BIN="whisper-cli"
 WHISPER_METAL_RESOURCES="$(brew --prefix whisper-cpp)/share/whisper-cpp"
@@ -454,20 +462,28 @@ for input_file in "${recordings[@]}"; do
 
     if [ -n "$mk_s" ]; then
         echo "  → Parsing markers (Track $((mk_s + 1)))..."
-        # A marker track at digital silence usually means the Stream Deck clips
-        # went to another track in OBS, not that nothing was pressed. Say so,
-        # since the transcript alone would just look marker-free.
+        # A marker track at digital silence usually means the marker audio went
+        # to another track in OBS, not that nothing was pressed. Say so, since
+        # the transcript alone would just look marker-free.
         mk_peak=$(peak_db "$tmp_mk")
         if [ -n "$mk_peak" ] && awk -v p="$mk_peak" 'BEGIN{exit !(p <= -90)}'; then
-            echo "  ⚠  Track $((mk_s + 1)) (markers) is digital silence. If you pressed keys on"
-            echo "     this call, check the Mark clips' track routing in OBS, then rerun with"
-            echo "     MARKER_TRACK=<the track they landed on>."
+            echo "  ⚠  Track $((mk_s + 1)) (markers) is digital silence. If you pressed pad A"
+            echo "     (or a Stream Deck key) on this call, check which OBS track the P4next"
+            echo "     sound pads channels feed, then rerun with MARKER_TRACK=<that track>."
+        fi
+        # One full-resolution frame per press, while the .mkv still exists.
+        frame_args=()
+        if has_stream "$input_file" v:0; then
+            frame_args=(--video "$input_file" --frames-dir "$rec_dir/markers"
+                        --json-out "$rec_dir/markers.json")
         fi
         ( cd "$REPO_DIR" && python3 -m casting_call.marker_track \
             "$tmp_mk" "$txt_out" \
             --whisper-bin "$WHISPER_BIN" \
             --model "$WHISPER_MODEL" \
             --metal-resources "$WHISPER_METAL_RESOURCES" \
+            --mode "$MARKER_MODE" \
+            "${frame_args[@]}" \
             --parts-out "$parts_dir/markers.txt" | sed 's/^/  → /' )
     fi
 

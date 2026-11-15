@@ -18,6 +18,17 @@ slice where there is nothing to merge it with.
     transcribe_burst -> whisper, one short slice, one phrase
     bursts_to_markers-> markers.match_marker over the results
 
+Two rigs, one track. Since 2026-11-14 the P4next's pad A plays a single clip
+that says "marker", so every burst is a press of the same type and whisper has
+nothing to decide. choose_mode() picks between the two rigs:
+
+    auto (default): whisper the first PROBE_BURSTS bursts. Any hit on one of the
+      seven Stream Deck phrases (markers.LEGACY_TYPES) means an old recording,
+      so the rest go through whisper as before. No legacy hit, including when
+      whisper is missing or hears nothing, means the pad rig: every burst
+      becomes one `marker` press and whisper is not called again.
+    single / legacy: force one or the other (MARKER_MODE in ripa).
+
 Usage:
     python3 -m casting_call.marker_track <markers.wav> <main_transcript.txt>
 """
@@ -32,7 +43,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from casting_call.markers import embed_markers, match_marker
+from casting_call import frames as frame_grab
+from casting_call.markers import LEGACY_TYPES, SINGLE_TYPE, embed_markers, match_marker
 from casting_call.transcript import parse_transcript, render_transcript
 
 # Anything above this counts as a clip rather than room tone. The track is
@@ -49,6 +61,19 @@ MIN_SILENCE = 0.4
 # puts the whole word back. There is nothing else on the marker track to bleed in, and the
 # closest two presses on a real call were 2s apart, so erring wide is free.
 PAD = 0.4
+
+# Pad rig: a burst shorter than this is a click or a USB pop, not the 0.74s
+# "marker" clip (which silencedetect trims to roughly 0.4-0.6s).
+MIN_PRESS = 0.15
+
+# Pad rig: a press starting this soon after the previous one is the same
+# moment pressed twice, not a second marker. MIN_SILENCE already joins presses
+# whose clips overlap or sit under 0.4s apart into one burst; this catches the
+# double tap that lands just after the clip ends.
+MERGE_WITHIN = 1.5
+
+# How many bursts auto mode hands whisper before deciding which rig recorded it.
+PROBE_BURSTS = 3
 
 _SIL_START = re.compile(r"silence_start:\s*([0-9.]+)")
 _SIL_END = re.compile(r"silence_end:\s*([0-9.]+)")
@@ -156,23 +181,82 @@ def bursts_to_markers(bursts, texts):
     """
     out = []
     for (start, _end), text in zip(bursts, texts):
-        mtype = match_marker(text)
+        mtype = match_marker(text or "")
         if mtype:
-            out.append({"t": int(start), "type": mtype, "text": mtype})
+            out.append({"t": int(start), "at": start, "type": mtype, "text": mtype})
     return out
 
 
-def markers_from_track(audio_path, whisper_bin, model, metal_resources=None,
-                       progress=None):
-    """Full marker track -> markers pass. Returns [{'t','type','text'}] in time order."""
-    bursts = detect_bursts(audio_path)
-    texts = []
-    for n, (start, end) in enumerate(bursts, 1):
+def choose_mode(probe_texts):
+    """'legacy' if any probe burst says one of the Stream Deck phrases, else 'single'."""
+    for text in probe_texts:
+        if match_marker(text or "") in LEGACY_TYPES:
+            return "legacy"
+    return "single"
+
+
+def presses_from_bursts(bursts, min_press=MIN_PRESS, merge_within=MERGE_WITHIN):
+    """Pad rig: one `marker` press per burst, keeping the exact start time.
+
+    Drops clicks shorter than min_press and folds a press that starts within
+    merge_within seconds of the last kept one into it.
+    """
+    out, last = [], None
+    for start, end in bursts:
+        if end - start < min_press:
+            continue
+        if last is not None and start - last < merge_within:
+            continue
+        out.append({"t": int(start), "at": start, "type": SINGLE_TYPE,
+                    "text": SINGLE_TYPE})
+        last = start
+    return out
+
+
+def markers_from_bursts(bursts, transcribe, mode="auto", progress=None):
+    """Bursts -> (markers, mode used, per-burst whisper texts).
+
+    `transcribe(start, end)` returns whisper's text for one burst. A burst
+    whisper never heard (pad rig, past the probe) has text None.
+    """
+    texts = [None] * len(bursts)
+
+    def run(i):
         if progress:
-            progress(n, len(bursts), start)
-        texts.append(transcribe_burst(audio_path, start, end, whisper_bin, model,
-                                      metal_resources=metal_resources))
-    return bursts_to_markers(bursts, texts)
+            progress(i + 1, len(bursts), bursts[i][0])
+        texts[i] = transcribe(*bursts[i])
+
+    if mode == "auto":
+        for i in range(min(PROBE_BURSTS, len(bursts))):
+            run(i)
+        mode = choose_mode(texts)
+    if mode == "single":
+        return presses_from_bursts(bursts), mode, texts
+    for i in range(len(bursts)):
+        if texts[i] is None:
+            run(i)
+    return bursts_to_markers(bursts, texts), mode, texts
+
+
+def markers_from_track(audio_path, whisper_bin, model, metal_resources=None,
+                       progress=None, mode="auto"):
+    """Full marker track -> markers pass. Returns [{'t','at','type','text'}] in time order."""
+    markers, _mode, _texts = markers_from_bursts(
+        detect_bursts(audio_path),
+        lambda s, e: transcribe_burst(audio_path, s, e, whisper_bin, model,
+                                      metal_resources=metal_resources),
+        mode=mode, progress=progress)
+    return markers
+
+
+format_ts = frame_grab.format_ts
+
+
+def parts_label(start, end, text):
+    """What markers.txt says about one burst."""
+    if text is None:
+        return f"burst {end - start:.2f}s"
+    return text or "(unrecognized)"
 
 
 def main(argv=None):
@@ -185,6 +269,15 @@ def main(argv=None):
     ap.add_argument("--metal-resources", default=None)
     ap.add_argument("--parts-out", default=None,
                     help="write one line per detected burst here, for reference")
+    ap.add_argument("--mode", choices=("auto", "single", "legacy"), default="auto",
+                    help="single = P4next pad clip, legacy = the seven Stream Deck "
+                         "clips, auto = decide from the first few bursts")
+    ap.add_argument("--video", default=None,
+                    help="recording to take one full-resolution frame from per press")
+    ap.add_argument("--frames-dir", default=None,
+                    help="where marker-HHMMSS.png frames go (needs --video)")
+    ap.add_argument("--json-out", default=None,
+                    help="write markers.json (time, type, frame per press) here")
     args = ap.parse_args(argv)
 
     def tick(n, total, start):
@@ -192,25 +285,36 @@ def main(argv=None):
               file=sys.stderr)
 
     bursts = detect_bursts(args.marker_audio)
-    texts = []
-    for n, (start, end) in enumerate(bursts, 1):
-        tick(n, len(bursts), start)
-        texts.append(transcribe_burst(args.marker_audio, start, end,
+    markers, mode, texts = markers_from_bursts(
+        bursts,
+        lambda s, e: transcribe_burst(args.marker_audio, s, e,
                                       args.whisper_bin, args.model,
-                                      metal_resources=args.metal_resources))
-    markers = bursts_to_markers(bursts, texts)
+                                      metal_resources=args.metal_resources),
+        mode=args.mode, progress=tick)
+    if bursts:
+        rig = "P4next pad clip" if mode == "single" else "Stream Deck clips"
+        print(f"marker track read as the {rig} ({len(bursts)} burst(s))")
 
     if args.parts_out:
         # One line per burst, including ones that matched nothing, so a press that
-        # failed to recognize is visible rather than just absent.
+        # failed to recognize is visible rather than just absent. Pad-rig bursts
+        # whisper never heard are listed by length instead.
         Path(args.parts_out).write_text("".join(
-            f"[{int(s)//3600:01d}:{int(s)//60%60:02d}:{int(s)%60:02d}] [T3] {t or '(unrecognized)'}\n"
-            for (s, _e), t in zip(bursts, texts)
+            f"[{format_ts(s)}] [T3] {parts_label(s, e, t)}\n"
+            for (s, e), t in zip(bursts, texts)
         ), encoding="utf-8")
 
     if not markers:
         print("no markers recognized on the marker track")
         return 0
+
+    frames = [None] * len(markers)
+    if args.video and args.frames_dir:
+        frames = frame_grab.grab_frames(args.video, markers, args.frames_dir)
+        got = sum(1 for f in frames if f)
+        print(f"saved {got}/{len(markers)} full-resolution frame(s) to {args.frames_dir}")
+    if args.json_out:
+        frame_grab.write_manifest(args.json_out, args.video, markers, frames)
 
     path = Path(args.transcript)
     entries = parse_transcript(path.read_text(encoding="utf-8"))

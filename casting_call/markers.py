@@ -32,7 +32,14 @@ from casting_call.transcript import parse_transcript, render_transcript
 # whisper clipped the unstressed trailing word ("...for me" -> "..."), so a
 # degraded press surfaces as owner-unknown instead of being misfiled onto one
 # side of the call.
+# The one marker type on the P4next rig: pad A plays a clip that says "marker".
+SINGLE_TYPE = "marker"
+
 MARKER_RULES = [
+    # The P4next pad clip (2026-11-14 on). One type for every press; the pad
+    # path in marker_track never asks whisper, but a whisper pass over an old
+    # track that happens to say "marker" should still land here.
+    (SINGLE_TYPE, "marker"),
     ("action-them", "for them"),
     ("action-me", "for me"),
     ("topic", "topic"),
@@ -48,6 +55,10 @@ MARKER_RULES = [
     ("flag", "flag"),
     ("follow", "follow"),
 ]
+
+# Every type the Stream Deck era produced. A whisper hit on one of these means
+# the track holds the old seven spoken clips, not the single pad clip.
+LEGACY_TYPES = [mtype for mtype, _ in MARKER_RULES if mtype != SINGLE_TYPE]
 
 # Canonical type order, derived so it can never drift from the rules above.
 # digest.py groups by this.

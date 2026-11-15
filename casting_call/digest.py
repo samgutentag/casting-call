@@ -8,6 +8,11 @@ spoken aside filed into the section it fell in, a rollup of everything
 actionable across section boundaries, and the ~30s of conversation around each
 item. `video` markers also carry a screenshot seeked from the recording.
 
+`marker` presses (the single P4next pad clip, 2026-11-14 on) carry a wider
+window (MARKER_WINDOW, so the skill can summarize what was going on), a
+screenshot preview, and `frame`: the full-resolution PNG ripa saved at the
+press, read from markers.json next to the transcript.
+
 Two channels feed the same item list: Stream Deck presses (`markers`) and the
 phrases Sam speaks on his own track (`asides`). They carry a `source` so the
 page can label them, but nothing downstream has to branch on it.
@@ -30,8 +35,17 @@ import sys
 from pathlib import Path
 
 from casting_call.asides import asides_from_entries
-from casting_call.markers import MARK_LABEL, MARKER_TYPES
+from casting_call.frames import load_manifest
+from casting_call.markers import MARK_LABEL, MARKER_TYPES, SINGLE_TYPE
 from casting_call.transcript import parse_transcript
+
+# Context around a single-type `marker` press. One button means the press says
+# nothing about what the moment was, so the summary has to come from the talk
+# around it, and 30s is too little to tell a topic from a passing remark.
+MARKER_WINDOW = 90
+
+# Types that get a screenshot preview in the digest.
+SCREENSHOT_TYPES = ("video", SINGLE_TYPE)
 
 # The marker type that opens a section rather than sitting inside one.
 TOPIC_TYPE = "topic"
@@ -229,14 +243,22 @@ def rollup(items):
     return out
 
 
-def build_digest_from_entries(entries, window_seconds=30, video_path=None):
+def build_digest_from_entries(entries, window_seconds=30, video_path=None,
+                              frames=None):
     """Core grouping, no filesystem read. Returns the digest dict without the
-    name/paths (those are added by build_digest)."""
+    name/paths (those are added by build_digest).
+
+    `frames` maps a press's whole second to its full-resolution PNG path
+    (frames.load_manifest); presses without one get frame None.
+    """
     speech, markers = split_markers(entries)
+    frames = frames or {}
 
     by_type = {}
     items = []
     for m in markers:
+        single = m["type"] == SINGLE_TYPE
+        window = max(window_seconds, MARKER_WINDOW) if single else window_seconds
         moment = {
             "type": m["type"],
             "t": m["t"],
@@ -244,10 +266,11 @@ def build_digest_from_entries(entries, window_seconds=30, video_path=None):
             "source": "marker",
             "text": None,
             "paired": False,
-            "context": window_for(m, speech, window_seconds),
+            "context": window_for(m, speech, window),
             "screenshot": None,
+            "frame": frames.get(m["t"]),
         }
-        if m["type"] == "video" and video_path:
+        if m["type"] in SCREENSHOT_TYPES and video_path:
             moment["screenshot"] = frame_data_uri(video_path, m["t"])
         by_type.setdefault(m["type"], []).append(moment)
         items.append(moment)
@@ -267,6 +290,7 @@ def build_digest_from_entries(entries, window_seconds=30, video_path=None):
             "paired": False,
             "context": window_for(a, speech, window_seconds),
             "screenshot": None,
+            "frame": None,
         })
     items.sort(key=lambda i: (i["t"], 0 if i["source"] == "marker" else 1))
 
@@ -299,13 +323,16 @@ def build_digest(transcript_path, window_seconds=30, frames=True):
     p = Path(transcript_path)
     entries = parse_transcript(p.read_text(encoding="utf-8"))
     audio, video = resolve_artifacts(p)
+    manifest = _find_sibling([p.parent, p.parent.parent], "markers", [".json"])
     d = build_digest_from_entries(
-        entries, window_seconds, video_path=video if frames else None
+        entries, window_seconds, video_path=video if frames else None,
+        frames=load_manifest(manifest) if manifest else None,
     )
     d["name"] = p.stem
     d["transcript_path"] = str(p)
     d["audio_path"] = audio
     d["video_path"] = video
+    d["markers_manifest"] = manifest
     return d
 
 

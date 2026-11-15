@@ -191,30 +191,22 @@ cd ~/Developer/casting-call
 cp speakers_roster.example.json speakers_roster.json
 # then edit speakers_roster.json: set "self" to your name, list the people you call
 
-# Marker clips (regenerated here; not committed)
-# name|phrase, because the two action clips say more than their filename.
-# The 0.25s of trailing silence keeps whisper from clipping the last word
-# ("...for me" / "...for them") at a segment boundary.
+# The marker clip (regenerated here; not committed). One clip, one word.
+# The P4next sound pads only accept 44.1 or 48 kHz WAV, so it is 48 kHz,
+# 24-bit stereo. ripa finds presses by silence detection, so the word itself
+# is for your ears when you scrub the audio, not for Whisper.
 mkdir -p obs/marker-clips
-for spec in "topic|mark topic" \
-            "action-me|mark action for me" \
-            "action-them|mark action for them" \
-            "important|mark important" \
-            "question|mark question" \
-            "quote|mark quote" \
-            "video|mark video"; do
-  name="${spec%%|*}"; phrase="${spec#*|}"
-  say -o /tmp/_m.aiff "$phrase"
-  ffmpeg -loglevel error -i /tmp/_m.aiff -ar 16000 -ac 1 -c:a pcm_s16le \
-    -af "apad=pad_dur=0.25" "obs/marker-clips/mark-$name.wav" -y
-done
+say -o /tmp/_m.aiff "marker"
+ffmpeg -loglevel error -i /tmp/_m.aiff -ar 48000 -ac 2 -c:a pcm_s24le \
+  -af "apad=pad_dur=0.25" obs/marker-clips/MARKER.WAV -y
 rm -f /tmp/_m.aiff
 
 # Confirm the toolchain is sane
 python3 -m pytest -q</code></pre>
 
-<p>If the tests pass, the software side is done. The clips now live in
-<code>~/Developer/casting-call/obs/marker-clips/</code>, which you will point OBS at in Part 3.</p>
+<p>If the tests pass, the software side is done. The clip now lives at
+<code>~/Developer/casting-call/obs/marker-clips/MARKER.WAV</code>, which goes onto P4next pad A in
+Part 3.</p>
 
 <blockquote>
 If <code>python3</code> offers to install "command line developer tools," let it, then rerun the
@@ -260,6 +252,22 @@ alone.
 </blockquote>
 
 <h2>Part 3: The marker track <span class="tag gui">in the app</span></h2>
+
+<p><strong>Current rig (2026-11-14 on): one pad on the Zoom PodTrak P4next.</strong></p>
+<ol>
+<li>On the P4next, open <strong>USB File Transfer</strong> so the card mounts on the Mac. Copy
+<code>obs/marker-clips/MARKER.WAV</code> into the card's <code>P4next_SoundPad</code> folder, then
+eject and leave USB File Transfer.</li>
+<li><strong>Menu, Sound Pad, A, Sound Assign</strong>: pick <code>MARKER.WAV</code>.
+<strong>Play Mode</strong>: One-Shot.</li>
+<li>In OBS, the P4next's sound pads channel pair (USB mode Multi Track) feeds Track 4 only, never
+Tracks 2 or 3. Monitoring off.</li>
+<li>Press pad A once on a test recording and confirm one <code>[MARKER] marker</code> line, a PNG in
+<code>&lt;name&gt;/markers/</code>, and nothing audible to the far side.</li>
+</ol>
+
+<p>The Stream Deck instructions below are the old seven-clip rig. <code>ripa</code> still reads
+recordings made with it, but new recordings do not need it.</p>
 
 <p>This is the piece that makes markers work without any syncing. Seven clips, each on its own
 media source, all routed to Track 4 (and the master on Track 1), none of them ever heard by anyone live.</p>

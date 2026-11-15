@@ -20,3 +20,6 @@ speakers_roster.json
 animatic/
 .env
 brag-output*/
+
+# small trimmed test fixtures are the exception
+!casting_call/tests/fixtures/**/*.wav

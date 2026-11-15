@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: schematic sheet, then the animated flow, then track map, setup and after-the-call steps. The microSD card is the recording; OBS only keeps video plus your mic for alignment. */
+/* Layout: schematic sheet, then the animated flow, then track map, setup and after-the-call steps. OBS is the recording; the microSD card is the backup. */
 :root {
   --paper: #f3f5f2;
   --sheet: #fbfcfa;
@@ -103,15 +103,15 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Recording rig · v5 · Zoom PodTrak P4next · no Loopback</div>
+    <div class="eyebrow">Recording rig · v6 · Zoom PodTrak P4next · tested 2026-11-14</div>
     <h1>Call Rig Wiring</h1>
-    <p class="lede">The P4next's microSD card is the recording: all four tracks are written there, with no Mac software in the way. OBS records the screen plus one track of your mic, which is only used to line the card up with the video after the call.</p>
+    <p class="lede">OBS is the recording: the P4next sends every channel to the Mac over one USB-C cable, so OBS gets your mic, the call and the marker on their own tracks with no app audio capture in the way. The P4next also writes every channel to its microSD card, the backup that fills any gap OBS leaves.</p>
   </header>
 
   <div class="sheet">
     <svg viewBox="0 0 1000 640" role="img" aria-labelledby="dgTitle dgDesc">
-      <title id="dgTitle">Wiring diagram for the call recording rig with a Zoom PodTrak P4next and no Loopback</title>
-      <desc id="dgDesc">An XLR PodMic plugs into P4next input 1 and wired headphones into its headphone jack. One USB-C cable carries computer audio from the Mac into the P4next and sends a stereo mix of your mic back for Meet and OBS. The P4next writes the stereo mix, mic, computer and sound pad files to microSD, which is the recording.</desc>
+      <title id="dgTitle">Wiring diagram for the call recording rig with a Zoom PodTrak P4next</title>
+      <desc id="dgDesc">An XLR PodMic plugs into P4next input 1 and wired headphones into its headphone jack. One USB-C cable carries computer audio from the Mac into the P4next and sends every P4next channel back separately: Meet takes channel 1 as your mic, and OBS records mic, computer audio and sound pads on their own tracks. The P4next also writes the stereo mix, mic, computer and sound pad files to microSD as the backup.</desc>
       <defs>
         <marker id="aXlr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--xlr)"/></marker>
         <marker id="aUsb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--usb)"/></marker>
@@ -133,7 +133,7 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
 
       <rect class="box" x="300" y="50" width="320" height="380" rx="8"/>
       <text class="t-title" x="318" y="80">Zoom PodTrak P4next</text>
-      <text class="t-small" x="318" y="100">Recorder: Multi Track · USB: Stereo Mix</text>
+      <text class="t-small" x="318" y="100">Rec + USB: Multi Track · Mix Minus On</text>
 
       <rect class="port" x="300" y="104" width="62" height="20" rx="2"/>
       <text class="t-port" x="306" y="118">IN 1</text>
@@ -157,8 +157,8 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
       <rect x="380" y="340" width="52" height="52" rx="7" fill="var(--pad)" fill-opacity=".22" stroke="var(--pad)" stroke-width="2"/>
       <text class="t-port" x="406" y="362" text-anchor="middle">PAD</text>
       <text class="t-title" x="406" y="384" text-anchor="middle" style="font-size:17px">A</text>
-      <text class="t-small" x="444" y="356">tap = marker beep</text>
-      <text class="t-small" x="444" y="372">on the pads track</text>
+      <text class="t-small" x="444" y="356">tap = the word "marker"</text>
+      <text class="t-small" x="444" y="372">OBS track 4 + pads file</text>
       <text class="t-small" x="444" y="396">PLAY key = silent mark</text>
 
       <rect class="port" x="500" y="430" width="70" height="14" rx="2"/>
@@ -172,22 +172,22 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
       <text class="t-port" x="756" y="106">Meet · Slack · Zoom</text>
       <text class="t-small" x="756" y="126">speaker → ZOOM P4next</text>
       <text class="t-small" x="756" y="144">mic ← ZOOM P4next</text>
-      <text class="t-small" x="756" y="162">(stereo mix = your mic)</text>
+      <text class="t-small" x="756" y="162">(Meet mic = channel 1)</text>
 
       <rect class="inner" x="744" y="190" width="218" height="104" rx="4"/>
-      <text class="t-port" x="756" y="210">OBS · video + sync</text>
-      <text class="t-small" x="756" y="230">video: screen capture</text>
-      <text class="t-small" x="756" y="248">track 1: ZOOM P4next</text>
-      <text class="t-small" x="756" y="266">  your mic, for alignment</text>
-      <text class="t-small" x="756" y="284">track 2: macOS app audio</text>
+      <text class="t-port" x="756" y="210">OBS · scene Call P4</text>
+      <text class="t-small" x="756" y="230">screen + 4 audio tracks</text>
+      <text class="t-small" x="756" y="248">2 Mic: ch 1 · 3 Other: ch 7-8</text>
+      <text class="t-small" x="756" y="266">4 Notes: ch 9-10 (marker)</text>
+      <text class="t-small" x="756" y="284">1 Mix: mic + other, in OBS</text>
 
       <rect class="inner" x="744" y="308" width="218" height="134" rx="4"/>
       <text class="t-port" x="756" y="328">After the call</text>
-      <text class="t-small" x="756" y="348">1. copy card MultiTrack</text>
-      <text class="t-small" x="756" y="366">   folder into call folder</text>
-      <text class="t-small" x="756" y="384">2. ripa lines MIC1.WAV up</text>
-      <text class="t-small" x="756" y="402">   with the OBS mic track</text>
-      <text class="t-small" x="756" y="420">3. transcribes card tracks</text>
+      <text class="t-small" x="756" y="348">1. ripa in the call folder</text>
+      <text class="t-small" x="756" y="366">2. transcript, markers and</text>
+      <text class="t-small" x="756" y="384">   a frame per marker</text>
+      <text class="t-small" x="756" y="402">3. card take fills any</text>
+      <text class="t-small" x="756" y="420">   OBS gap (being built)</text>
 
       <path d="M204 114 L300 114" fill="none" stroke="var(--xlr)" stroke-width="3.5" marker-end="url(#aXlr)"/>
       <text class="t-small" x="222" y="104">XLR</text>
@@ -199,33 +199,33 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
       <path d="M718 166 L622 166" fill="none" stroke="var(--usb)" stroke-width="1.5" marker-end="url(#aUsb)"/>
       <path d="M622 194 L718 194" fill="none" stroke="var(--usb)" stroke-width="1.5" marker-end="url(#aUsb)"/>
       <text class="t-small" x="630" y="156">computer audio</text>
-      <text class="t-small" x="630" y="212">your mic</text>
+      <text class="t-small" x="630" y="212">all channels</text>
       <text class="t-port" x="638" y="236" fill="var(--usb)">USB-C</text>
       <text class="t-small" x="630" y="256">also powers it</text>
 
       <path d="M535 444 L535 498" fill="none" stroke="var(--sd)" stroke-width="3.5" marker-end="url(#aSd)"/>
 
       <rect class="box" x="300" y="502" width="676" height="116" rx="6" style="stroke:var(--sd);stroke-width:2"/>
-      <text class="t-title" x="318" y="530">microSD · the recording · MultiTrack folder · 48 kHz / 24-bit WAV</text>
-      <text class="t-port" x="318" y="558"><tspan fill="var(--sd)">T1</tspan> stereo mix file</text>
-      <text class="t-port" x="500" y="558"><tspan fill="var(--sd)">T2</tspan> MIC1.WAV</text>
-      <text class="t-port" x="650" y="558"><tspan fill="var(--sd)">T3</tspan> USB.WAV</text>
-      <text class="t-port" x="800" y="558"><tspan fill="var(--sd)">T4</tspan> sound pads file</text>
-      <text class="t-small" x="318" y="586">records while the P4next is the Mac's USB audio device</text>
-      <text class="t-small" x="318" y="604">marks from the PLAY key are stored in these files too</text>
+      <text class="t-title" x="318" y="530">microSD · the backup · 48 kHz / 24-bit WAV</text>
+      <text class="t-port" x="318" y="558"><tspan fill="var(--sd)">T1</tspan> mix (card root)</text>
+      <text class="t-port" x="500" y="558"><tspan fill="var(--sd)">T2</tspan> _MIC1.wav</text>
+      <text class="t-port" x="650" y="558"><tspan fill="var(--sd)">T3</tspan> _USB.wav</text>
+      <text class="t-port" x="800" y="558"><tspan fill="var(--sd)">T4</tspan> _SOUND_PAD.wav</text>
+      <text class="t-small" x="318" y="586">files are named like 261114_220657_MIC1.wav, by start date and time</text>
+      <text class="t-small" x="318" y="604">PLAY-key marks are stored in every file as WAV cue points</text>
     </svg>
     <div class="legend">
       <span><i style="border-color:var(--xlr)"></i>XLR mic cable</span>
       <span><i style="border-color:var(--usb)"></i>USB-C, audio both ways</span>
       <span><i style="border-color:var(--phones)"></i>headphones</span>
       <span><i style="border-color:var(--sd)"></i>written to card</span>
-      <span><i style="border-color:var(--pad)"></i>marker beep (inside the P4next)</span>
+      <span><i style="border-color:var(--pad)"></i>marker word (pad A)</span>
     </div>
   </div>
 
   <section class="flowsec">
     <h2>Audio flow</h2>
-    <p class="lede">Each moving line is live audio. Pick a source to follow only its path through the P4next and onto the card, which becomes the four transcript tracks.</p>
+    <p class="lede">Each moving line is live audio. Pick a source to follow only its path through the P4next, onto its OBS track and into the transcript.</p>
     <div class="filters" role="group" aria-label="Follow one audio path">
       <button type="button" id="f-all" data-f="all" aria-pressed="true">Everything</button>
       <button type="button" id="f-mic" data-f="mic" aria-pressed="false"><i style="background:var(--xlr)"></i>Your voice</button>
@@ -234,19 +234,20 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
     </div>
     <div class="sheet">
       <svg id="flow" class="flowsvg" data-focus="all" viewBox="0 -28 1000 612" role="img" aria-labelledby="flTitle flDesc">
-        <title id="flTitle">Animated audio flow through the call rig without Loopback</title>
-        <desc id="flDesc">Your voice, computer audio and the marker beep each enter their own P4next channel and also sum into the master mix. Each channel is written to its own file on the microSD card, and ripa turns those files into transcript tracks 1 to 4 after the call. Your voice also leaves the P4next as the USB stereo mix: one branch goes to Meet so the far side hears you, and one goes to OBS track 1, which is used for alignment. OBS also copies the Mac's app audio onto its track 2 through macOS audio capture. The mix feeds your headphones.</desc>
+        <title id="flTitle">Animated audio flow through the call rig</title>
+        <desc id="flDesc">Your voice, computer audio and the marker word each enter their own P4next channel. In Multi Track USB mode every channel reaches the Mac separately, so OBS records your mic on track 2, computer audio on track 3 and the marker on track 4, and mixes mic plus computer audio into track 1 itself. Meet uses channel 1 as your mic. The P4next master mix feeds your headphones and the card, which also writes every channel to its own file. After the call ripa turns the OBS tracks into transcript lines, markers and frames, and fills any OBS gap from the card.</desc>
         <defs>
           <marker id="fXlr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--xlr)"/></marker>
           <marker id="fUsb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--usb)"/></marker>
           <marker id="fPad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--pad)"/></marker>
           <marker id="fMix" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--phones)"/></marker>
+          <marker id="fSd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--sd)"/></marker>
         </defs>
 
         <rect class="frame" x="230" y="20" width="200" height="410" rx="8"/>
         <text class="t-small" x="244" y="40">ZOOM P4next</text>
-        <rect class="frame card" x="490" y="20" width="200" height="410" rx="8"/>
-        <text class="t-small" x="504" y="40">microSD · the recording</text>
+        <rect class="frame" x="490" y="20" width="200" height="410" rx="8"/>
+        <text class="t-small" x="504" y="40">OBS · scene Call P4</text>
         <rect class="frame" x="750" y="20" width="220" height="410" rx="8"/>
         <text class="t-small" x="764" y="40">ripa · after the call</text>
 
@@ -256,45 +257,42 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         <rect class="node" x="30" y="144" width="170" height="68" rx="6"/>
         <text class="t-port" x="44" y="166">Mac: Meet · Slack · apps</text>
         <text class="t-small" x="44" y="184">sends: far side + sounds</text>
-        <text class="t-small" x="44" y="202">gets: your mic</text>
+        <text class="t-small" x="44" y="202">Meet mic: channel 1</text>
         <rect class="node" x="30" y="244" width="170" height="52" rx="6"/>
-        <text class="t-port" x="44" y="266">Pad A beep</text>
+        <text class="t-port" x="44" y="266">Pad A · "marker"</text>
         <text class="t-small" x="44" y="284">your marker press</text>
-        <text class="t-small" x="40" y="320">not sent to the Mac</text>
+        <text class="t-small" x="40" y="320">Meet never hears it</text>
 
-        <rect class="node" x="270" y="50" width="140" height="40" rx="5"/><text class="t-port" x="282" y="75">IN 1</text>
-        <rect class="node" x="270" y="150" width="140" height="40" rx="5"/><text class="t-port" x="282" y="175">USB</text>
-        <rect class="node" x="270" y="250" width="140" height="40" rx="5"/><text class="t-port" x="282" y="275">PADS</text>
+        <rect class="node" x="270" y="50" width="140" height="40" rx="5"/><text class="t-port" x="282" y="75">IN 1 · ch 1</text>
+        <rect class="node" x="270" y="150" width="140" height="40" rx="5"/><text class="t-port" x="282" y="175">USB · ch 7-8</text>
+        <rect class="node" x="270" y="250" width="140" height="40" rx="5"/><text class="t-port" x="282" y="275">PADS · ch 9-10</text>
         <rect class="node strong" x="270" y="340" width="140" height="56" rx="5"/><text class="t-port" x="282" y="362">MASTER mix</text>
-        <text class="t-small" x="282" y="384">IN 1 + USB + PADS</text>
+        <text class="t-small" x="282" y="384">phones + card</text>
 
-        <rect class="node" x="510" y="50" width="160" height="40" rx="5"/><text class="t-port" x="522" y="75">MIC1.WAV</text>
-        <rect class="node" x="510" y="150" width="160" height="40" rx="5"/><text class="t-port" x="522" y="175">USB.WAV</text>
-        <rect class="node" x="510" y="250" width="160" height="40" rx="5"/><text class="t-port" x="522" y="275">sound pads file</text>
-        <rect class="node strong" x="510" y="348" width="160" height="40" rx="5"/><text class="t-port" x="522" y="373">stereo mix file</text>
+        <rect class="node" x="510" y="50" width="160" height="40" rx="5"/><text class="t-port" x="522" y="75">Track 2 · Mic</text>
+        <rect class="node" x="510" y="150" width="160" height="40" rx="5"/><text class="t-port" x="522" y="175">Track 3 · Other</text>
+        <rect class="node" x="510" y="250" width="160" height="40" rx="5"/><text class="t-port" x="522" y="275">Track 4 · Notes</text>
+        <rect class="node strong" x="510" y="348" width="160" height="40" rx="5"/><text class="t-port" x="522" y="373">Track 1 · Mix</text>
+        <text class="t-small" x="510" y="410">mic + other, mixed in OBS</text>
 
-        <rect class="node" x="770" y="50" width="180" height="40" rx="5"/><text class="t-port" x="782" y="75">Track 2 · mic</text>
-        <rect class="node" x="770" y="150" width="180" height="40" rx="5"/><text class="t-port" x="782" y="175">Track 3 · computer</text>
-        <rect class="node" x="770" y="250" width="180" height="40" rx="5"/><text class="t-port" x="782" y="275">Track 4 · markers</text>
-        <rect class="node strong" x="770" y="348" width="180" height="40" rx="5"/><text class="t-port" x="782" y="373">Track 1 · mix</text>
+        <rect class="node" x="770" y="50" width="180" height="40" rx="5"/><text class="t-port" x="782" y="75">[You] lines</text>
+        <rect class="node" x="770" y="150" width="180" height="40" rx="5"/><text class="t-port" x="782" y="175">[Caller] lines</text>
+        <rect class="node" x="770" y="250" width="180" height="40" rx="5"/><text class="t-port" x="782" y="275">[MARKER] + frame</text>
+        <rect class="node strong" x="770" y="348" width="180" height="40" rx="5"/><text class="t-port" x="782" y="373">watch video audio</text>
 
         <rect class="node" x="236" y="466" width="134" height="52" rx="6"/>
         <text class="t-port" x="248" y="488">Headphones</text>
         <text class="t-small" x="248" y="506">the mix, live</text>
-        <rect class="node strong" x="490" y="466" width="480" height="64" rx="6"/>
-        <text class="t-port" x="504" y="486">OBS · track 1 your mic · track 2 computer audio · screen</text>
-        <text class="t-small" x="504" y="506">plays back with both sides · no marker beeps</text>
-        <text class="t-small" x="504" y="522">ripa lines track 1 up with MIC1.WAV</text>
+        <rect class="node strong" x="490" y="466" width="480" height="64" rx="6" style="stroke:var(--sd)"/>
+        <text class="t-port" x="504" y="486">microSD · the backup · MIC1 · USB · SOUND_PAD · mix</text>
+        <text class="t-small" x="504" y="506">every channel again, written inside the P4next</text>
+        <text class="t-small" x="504" y="522">ripa fills an OBS gap from it, lined up by marker presses</text>
 
         <path class="flow c-mic p-mic" d="M200 70 L266 70" marker-end="url(#fXlr)"/>
         <path class="flow c-mic p-mic" d="M410 70 L506 70" marker-end="url(#fXlr)"/>
         <path class="flow c-mic p-mic" d="M670 70 L766 70" marker-end="url(#fXlr)"/>
         <path class="flow c-mic p-mic dotted" d="M300 90 L300 118 L150 118 L150 140" marker-end="url(#fXlr)"/>
         <text class="t-small" x="156" y="112">your mic to Meet</text>
-        <path class="flow c-mic p-mic" d="M340 50 L340 0 L986 0 L986 498 L974 498" marker-end="url(#fXlr)"/>
-        <text class="t-small" x="352" y="-8">USB stereo mix = your mic → OBS track 1</text>
-        <path class="flow c-comp p-comp dotted" d="M30 196 L14 196 L14 560 L730 560 L730 534" marker-end="url(#fUsb)"/>
-        <text class="t-small" x="40" y="552">macOS audio capture → OBS track 2 (copy of the call)</text>
 
         <path class="flow c-comp p-comp" d="M200 170 L266 170" marker-end="url(#fUsb)"/>
         <path class="flow c-comp p-comp" d="M410 170 L506 170" marker-end="url(#fUsb)"/>
@@ -304,15 +302,23 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         <path class="flow c-mark p-mark" d="M410 270 L506 270" marker-end="url(#fPad)"/>
         <path class="flow c-mark p-mark" d="M670 270 L766 270" marker-end="url(#fPad)"/>
 
+        <path class="flow c-mix p-mic" d="M710 70 L710 170"/>
+        <path class="flow c-mix p-mic p-comp" d="M710 170 L710 358 L674 358" marker-end="url(#fMix)"/>
+        <circle cx="710" cy="70" r="4.5" fill="var(--xlr)" stroke="var(--sheet)" stroke-width="1.5"/>
+        <circle cx="710" cy="170" r="4.5" fill="var(--usb)" stroke="var(--sheet)" stroke-width="1.5"/>
+        <path class="flow c-mix p-mic p-comp" d="M670 378 L766 378" marker-end="url(#fMix)"/>
+
         <path class="flow c-mix p-mic" d="M420 70 L420 170"/>
         <path class="flow c-mix p-mic p-comp" d="M420 170 L420 270"/>
         <path class="flow c-mix p-mic p-comp p-mark" d="M420 270 L420 352 L414 352" marker-end="url(#fMix)"/>
         <circle cx="420" cy="70" r="4.5" fill="var(--xlr)" stroke="var(--sheet)" stroke-width="1.5"/>
         <circle cx="420" cy="170" r="4.5" fill="var(--usb)" stroke="var(--sheet)" stroke-width="1.5"/>
         <circle cx="420" cy="270" r="4.5" fill="var(--pad)" stroke="var(--sheet)" stroke-width="1.5"/>
-        <path class="flow c-mix p-mic p-comp p-mark" d="M410 380 L506 380" marker-end="url(#fMix)"/>
-        <path class="flow c-mix p-mic p-comp p-mark" d="M670 368 L766 368" marker-end="url(#fMix)"/>
+        <path class="flow c-mix p-mic p-comp p-mark" d="M410 384 L450 384 L450 498 L486 498" marker-end="url(#fMix)"/>
         <path class="flow c-mix p-mic p-comp p-mark" d="M300 396 L300 462" marker-end="url(#fMix)"/>
+
+        <path class="flow p-mic p-comp p-mark dotted" style="stroke:var(--sd)" d="M974 498 L986 498 L986 0 L940 0 L940 46" marker-end="url(#fSd)"/>
+        <text class="t-small" x="560" y="-8">card fills OBS gaps after the call (backup)</text>
       </svg>
     </div>
   </section>
@@ -347,17 +353,17 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         <h3><span class="when">Before</span> about 2 minutes</h3>
         <ol class="checks">
           <li><label><input type="checkbox" id="c1"> Turn the P4next on with the POWER button. USB from the Mac powers it, and the card must be in.</label></li>
-          <li><label><input type="checkbox" id="c2"> Headphones in PHONES 1. In Meet, check that speaker and mic both say <code>ZOOM P4next</code>, not AirPods or the MacBook.</label></li>
+          <li><label><input type="checkbox" id="c2"> Headphones in PHONES 1. In Meet, check that speaker and mic both say <code>ZOOM P4next</code>, not AirPods or the MacBook. In OBS, check the scene is <code>Call P4</code>.</label></li>
           <li><label><input type="checkbox" id="c3"> Talk for a few seconds. The IN 1 meter should peak between −12 and −6 dBFS; turn the input 1 knob if it doesn't.</label></li>
-          <li><label><input type="checkbox" id="c4"> Start OBS recording first, so the video is already rolling.</label></li>
-          <li><label><input type="checkbox" id="c5"> Press REC on the P4next. Check that the red light is on and the timer is counting. Then, muted in Meet, say <strong>“Casting call sync”</strong> and clap once. ripa finds the phrase in both recordings and uses the clap to line them up exactly.</label></li>
+          <li><label><input type="checkbox" id="c4"> Start OBS recording.</label></li>
+          <li><label><input type="checkbox" id="c5"> Press REC on the P4next. Check that the red light is on and the timer is counting. Then tap <strong>pad A</strong> once: that press lands on both OBS and the card, and ripa uses it to line them up.</label></li>
         </ol>
       </div>
       <div class="phase">
         <h3><span class="when">During</span> the call</h3>
         <ol class="checks">
-          <li><label><input type="checkbox" id="c6"> Important moment? Tap pad A. The beep lands on the card's pads track only; the call doesn't hear it.</label></li>
-          <li><label><input type="checkbox" id="c7"> Mute in Meet, never with the P4next MUTE 1 button. Meet's mute keeps your voice on the card, so notes you say while muted still reach the transcript.</label></li>
+          <li><label><input type="checkbox" id="c6"> Worth coming back to? Tap pad A. It lands on OBS track 4 and the card's pads file; the call doesn't hear it. You get a summary of the talk around it and a full-resolution screen grab.</label></li>
+          <li><label><input type="checkbox" id="c7"> Mute in Meet, never with the P4next MUTE 1 button. Meet's mute keeps your voice on OBS track 2 and the card, so notes you say while muted still reach the transcript.</label></li>
           <li><label><input type="checkbox" id="c8"> Glance at the P4next timer now and then. If it isn't moving, the card isn't recording.</label></li>
         </ol>
       </div>
@@ -366,13 +372,13 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         <ol class="checks">
           <li><label><input type="checkbox" id="c9"> Press STOP on the P4next, then stop OBS.</label></li>
           <li><label><input type="checkbox" id="c10"> On the P4next, open the menu, choose <code>USB File Transfer</code>, and the card mounts on the Mac.</label></li>
-          <li><label><input type="checkbox" id="c11"> Copy the newest folder from <code>MultiTrack/</code> into the call's folder next to the OBS <code>.mkv</code>.</label></li>
-          <li><label><input type="checkbox" id="c12"> Eject the card on the Mac and exit USB File Transfer, so the P4next is the Mac's audio device again.</label></li>
-          <li><label><input type="checkbox" id="c13"> Run <code>ripa</code> in the call folder. It lines the card up with the video and writes the transcript.</label></li>
+          <li><label><input type="checkbox" id="c11"> Leave the card mounted while you run <code>ripa</code>: it copies the matching take from <code>P4next_Multitrack/</code> into the call's folder.</label></li>
+          <li><label><input type="checkbox" id="c12"> Run <code>ripa</code> in the call folder. It writes the transcript, a frame per marker, and fills any OBS gap from the card.</label></li>
+          <li><label><input type="checkbox" id="c13"> Eject the card on the Mac and exit USB File Transfer, so the P4next is the Mac's audio device again.</label></li>
         </ol>
       </div>
     </div>
-    <p class="note">Not yet true: <code>ripa</code> doesn't read card folders today. That step gets built once the P4next arrives. Until then, the card files are safe where you copied them.</p>
+    <p class="note">Being built: copying the card take and filling OBS gaps from it. Until that ships, <code>ripa</code> works from the OBS file alone, markers and frames included, and the card files stay safe on the card.</p>
   </section>
 
   <div class="cols">
@@ -380,13 +386,12 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
       <h2>Track map</h2>
       <div class="tablebox">
         <table>
-          <thead><tr><th>Track</th><th>Holds</th><th>File on the card</th></tr></thead>
+          <thead><tr><th>OBS track</th><th>Holds</th><th>P4next channel</th><th>Backup on the card</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip" style="color:var(--sd)">T1</span></td><td>Everything</td><td>stereo mix file</td></tr>
-            <tr><td><span class="chip" style="color:var(--sd)">T2</span></td><td>Your mic only</td><td><code>MIC1.WAV</code></td></tr>
-            <tr><td><span class="chip" style="color:var(--sd)">T3</span></td><td>Computer audio only</td><td><code>USB.WAV</code></td></tr>
-            <tr><td><span class="chip" style="color:var(--sd)">T4</span></td><td>Marker beeps only</td><td>sound pads file</td></tr>
-            <tr><td><span class="chip" style="color:var(--usb)">OBS</span></td><td>Screen video, your mic (track 1, for alignment), computer audio (track 2, a convenience copy)</td><td>not on the card</td></tr>
+            <tr><td><span class="chip" style="color:var(--usb)">1 Mix</span></td><td>Everything but the marker, mixed in OBS</td><td>1 + 7-8</td><td>mix file at the card root</td></tr>
+            <tr><td><span class="chip" style="color:var(--usb)">2 Mic</span></td><td>Your mic only</td><td>1</td><td><code>_MIC1.wav</code></td></tr>
+            <tr><td><span class="chip" style="color:var(--usb)">3 Other</span></td><td>Computer audio only</td><td>7-8</td><td><code>_USB.wav</code></td></tr>
+            <tr><td><span class="chip" style="color:var(--usb)">4 Notes</span></td><td>The marker word only</td><td>9-10</td><td><code>_SOUND_PAD.wav</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -394,10 +399,10 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
     <section>
       <h2>Set once, then leave alone</h2>
       <ol>
-        <li>On the P4next, set Recorder Mode to <code>Multi Track</code>, set USB Audio Interface to <code>Stereo Mix</code>, set the PLAY key during recording to <code>Mark Only</code>, and put a short beep on pad A in One-Shot mode.</li>
+        <li>On the P4next: recording file type <code>Multi Track</code>, USB Audio Interface Mode <code>Multi Track</code>, Mix Minus <code>On</code>, Play Key in Rec <code>Mark Only</code>, pad A = <code>MARKER.WAV</code> in One-Shot.</li>
         <li>In macOS and Meet, choose <code>ZOOM P4next</code> for both speaker and mic.</li>
-        <li>In OBS, replace the Wave source with a <code>ZOOM P4next</code> audio input on track 1 only, and keep a macOS audio capture (desktop or app audio) on track 2 only. Turn monitoring off for both.</li>
-        <li>Set the P4next's date and time, so its files can be matched to OBS by start time if the audio match ever fails.</li>
+        <li>In OBS, scene <code>Call P4</code>: three Audio Input Capture sources on <code>ZOOM P4next</code>, downmixing off. <code>P4 Mic</code> Ch 1 / Ch 1 on tracks 1 and 2, <code>P4 Computer</code> Ch 7 / Ch 8 on tracks 1 and 3, <code>P4 Marker</code> Ch 9 / Ch 10 on track 4 only. Monitoring off, Global Audio Devices disabled.</li>
+        <li>Set the P4next's date and time, so its files can be matched to OBS by start time if no marker press is found.</li>
         <li>Mute inputs 2 to 4 on the P4next (MUTE 2–4 lit) so the empty jacks don't add noise. Leave MUTE 1 off.</li>
       </ol>
     </section>
@@ -407,10 +412,10 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
     <h2>Hearing yourself</h2>
     <ol>
       <li>The P4next's headphone jacks always carry the full mix, your mic included. The manual lists no way to take one input out of the headphones.</li>
-      <li>That monitoring happens inside the P4next and never goes through the Mac, so there's no software round trip. The delay you've felt comes from monitoring in Wave Link or OBS.</li>
-      <li>To keep yourself out of your ears, turn OBS monitoring off and close Wave Link during calls. If the P4next's own monitoring still feels off, lower the headphone volume rather than adding software.</li>
+      <li>That monitoring happens inside the P4next and never goes through the Mac, so there's no software round trip.</li>
+      <li>Keep OBS monitoring off on all three sources. If the P4next's own monitoring still feels off, lower the headphone volume rather than adding software.</li>
     </ol>
   </section>
 
-  <p class="note">Test on the first call: confirm that the far side hears you, that they don't hear the marker beep, and that OBS's single track has your voice. The manual says the USB stereo mix carries inputs 1 to 4; whether the sound pads are left out of it isn't stated.</p>
+  <p class="note">Tested 2026-11-14: the far side hears you and not the marker, each OBS track carries only its channel, and the card's mix has both sides. With Mix Minus on, the P4next's own USB mix (channels 11-12) leaves out the call, which is why OBS builds track 1 itself.</p>
 </div>

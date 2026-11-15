@@ -86,7 +86,9 @@ for input_file in "${recordings[@]}"; do
             afilt="adelay=$(awk -v o="$offset" 'BEGIN{printf "%d", -o*1000}'):all=1,apad"
         fi
         extra_in=("${card_in[@]}")
-        audio=(-filter_complex "[1:a:0]${afilt}[a]" -map "[a]" -shortest)
+        # -map_chapters 0: ffmpeg reads the card's cue marks as chapters, in card
+        # time, and would otherwise write them into the .mp4 as a data track.
+        audio=(-filter_complex "[1:a:0]${afilt}[a]" -map "[a]" -shortest -map_chapters 0)
         source="card stereo mix (offset ${offset} s)"
     elif [ "${n_tracks:-0}" -ge 4 ]; then
         audio=(-map 0:a:0); source="OBS Track 1 (master mix)"

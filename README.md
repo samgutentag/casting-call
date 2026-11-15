@@ -112,6 +112,12 @@ cp speakers_roster.example.json speakers_roster.json
 # edit: set "self" to your name, list the people you call
 ```
 
+The `/process-transcript` Claude Code skill lives in this repo. Link it once per machine:
+
+```bash
+ln -sfn ~/Developer/casting-call/skills/process-transcript ~/.claude/skills/process-transcript
+```
+
 ## Repo shape
 
 ```
@@ -122,6 +128,7 @@ casting_call/      the Python package
   markers.py       marker-track phrases folded into the transcript
   digest.py        marker presses grouped into a per-call digest (JSON)
   tests/           pytest suite (fast, no fixtures on disk)
+skills/process-transcript/   the /process-transcript skill (SKILL.md, render.py, report templates)
 docs/user-guide.html   the real documentation; start there
 docs/setup-guide.html  building the OBS + Stream Deck rig on a new machine
 ```

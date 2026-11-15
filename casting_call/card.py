@@ -15,11 +15,14 @@ Files over 2 GB continue in `_02`, `_03`... parts. Each file carries a `bext`
 chunk (date, start time, time reference) and a `cue ` chunk with one point per
 PLAY-key press, as a sample offset. Both are read here with the standard library.
 
-ripa copies the matching take into <name>/card/ (flat), and everything after
-that reads only from there, so the card can go back in the recorder.
+The card is only mounted long enough for bin/pull_card.sh (pull.py) to copy
+new takes into a local inbox, because in USB File Transfer mode the P4next stops
+being the Mac's audio device. ripa then matches inbox takes to recordings and
+links (or copies) each into <name>/card/ (flat); everything after that reads
+only from there. ripa never reads the mounted card.
 
 Usage:
-    python3 -m casting_call.card copy <day_dir> [--volume /Volumes/P4NEXT_SD]
+    python3 -m casting_call.card copy <day_dir> [--inbox ~/Desktop/P4next-takes]
     python3 -m casting_call.card input-args <name_dir> <role>
 """
 
@@ -37,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 VOLUME = "/Volumes/P4NEXT_SD"
+INBOX = str(Path.home() / "Desktop" / "P4next-takes")
 MULTITRACK_DIR = "P4next_Multitrack"
 
 ROLES = ("mix", "mic", "usb", "pads")
@@ -293,18 +297,34 @@ def join_parts(paths, out_path):
     return out_path
 
 
-# ── copying off the card ─────────────────────────────────────────────────────
+# ── finding takes on the card or in the inbox ────────────────────────────────
 
-def card_takes(volume):
-    """{take: [Path, ...]} for every take on a mounted card."""
-    volume = Path(volume)
+def _wavs(d):
+    try:
+        return [p for p in Path(d).iterdir() if p.is_file() and p.suffix.lower() == ".wav"]
+    except OSError:
+        return []
+
+
+def card_takes(root):
+    """{take: [Path, ...]} for every take under root.
+
+    Reads both layouts: the card's (mix at the root, the rest in
+    P4next_Multitrack/<take>/) and the inbox's (everything in <take>/).
+    """
+    root = Path(root)
     takes = {}
-    candidates = list(volume.glob("*.wav")) + list(volume.glob("*.WAV"))
-    multi = volume / MULTITRACK_DIR
+    candidates = _wavs(root)
+    dirs = []
+    try:
+        dirs = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    except OSError:
+        pass
+    multi = root / MULTITRACK_DIR
     if multi.is_dir():
-        for d in multi.iterdir():
-            if d.is_dir():
-                candidates += [p for p in d.iterdir() if p.suffix.lower() == ".wav"]
+        dirs += [d for d in multi.iterdir() if d.is_dir()]
+    for d in dirs:
+        candidates += _wavs(d)
     for p in candidates:
         if p.name.startswith("."):
             continue
@@ -347,23 +367,37 @@ def match_takes(recordings, takes, slack=CLOCK_SLACK):
     return matched, left
 
 
-def copy_takes(day_dir, volume=VOLUME, out=print):
-    """Copy every card take that belongs to a recording in day_dir into <name>/card/.
+def link_or_copy(src, target):
+    """Hard-link src to target (free, same disk), else copy it."""
+    try:
+        os.link(src, target)
+    except OSError:
+        shutil.copy2(src, target)
 
-    Never deletes anything from the card. Already-copied files of the same size
-    are skipped. Returns {take: name}.
+
+def copy_takes(day_dir, inbox=INBOX, out=print):
+    """Put every inbox take that belongs to a recording in day_dir into <name>/card/.
+
+    Matched by bext start time. Never deletes anything from the inbox. Files
+    already there at the same size are skipped. Returns {take: name}.
     """
-    day_dir, volume = Path(day_dir), Path(volume)
-    if not volume.is_dir():
+    day_dir, inbox = Path(day_dir), Path(inbox)
+    if not inbox.is_dir():
         return {}
     videos = sorted(list(day_dir.glob("*.mkv")) + list(day_dir.glob("*.mp4")))
+    if not videos:
+        return {}
     recordings = [(v.stem, obs_start(v), _probe_duration(v)) for v in videos]
-    takes = card_takes(volume)
+    takes = card_takes(inbox)
     starts = {}
     for take, files in takes.items():
         mix = [p for p in files if classify(p.name)[1] == "mix"]
         starts[take] = take_start((mix or files)[0])
     matched, left = match_takes(recordings, starts)
+    # The inbox holds every take ever pulled, so the unmatched ones are only
+    # worth naming when they fall on the same day as a recording here.
+    days = {r[1].date() for r in recordings if r[1]}
+    left = [t for t in left if starts.get(t) and starts[t].date() in days]
     for take, name in sorted(matched.items()):
         dest = day_dir / name / "card"
         try:
@@ -377,30 +411,30 @@ def copy_takes(day_dir, volume=VOLUME, out=print):
             try:
                 if target.exists() and target.stat().st_size == src.stat().st_size:
                     continue
-                shutil.copy2(src, target)
+                link_or_copy(src, target)
                 copied += 1
             except OSError as e:
                 out(f"card: failed to copy {src.name}: {e}")
-        out(f"card: take {take} -> {name}/card/ ({copied} file(s) copied, "
+        out(f"card: take {take} -> {name}/card/ ({copied} file(s) linked or copied, "
             f"{len(takes[take]) - copied} already there)")
     if left:
-        out(f"card: left on the card, no matching recording here: {', '.join(sorted(left))}")
+        out(f"card: same-day takes with no matching recording here: {', '.join(sorted(left))}")
     return matched
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Copy and read P4next card takes.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("copy", help="copy matching takes off a mounted card")
+    c = sub.add_parser("copy", help="link matching inbox takes into <name>/card/")
     c.add_argument("day_dir")
-    c.add_argument("--volume", default=os.environ.get("CARD_VOLUME", VOLUME))
+    c.add_argument("--inbox", default=os.environ.get("CARD_INBOX", INBOX))
     i = sub.add_parser("input-args", help="ffmpeg input args for one role, one per line")
     i.add_argument("name_dir")
     i.add_argument("role", choices=ROLES)
     args = ap.parse_args(argv)
 
     if args.cmd == "copy":
-        copy_takes(args.day_dir, args.volume)
+        copy_takes(args.day_dir, args.inbox)
         return 0
     take = find_card_take(args.name_dir)
     if take is None or not take.roles.get(args.role):

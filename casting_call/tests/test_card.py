@@ -134,29 +134,42 @@ def test_match_takes_allows_a_slow_card_clock():
     assert left == ["261114_120000"]
 
 
-def test_copy_takes_copies_flat_and_never_touches_the_card(tmp_path):
+def test_card_takes_reads_card_and_inbox_layouts(tmp_path):
     vol = tmp_path / "P4NEXT_SD"
     multi = vol / card.MULTITRACK_DIR / TAKE
     multi.mkdir(parents=True)
-    shutil.copy(FIX / "card" / f"{TAKE}.wav", vol / f"{TAKE}.wav")
-    for suffix in ("_MIC1", "_USB", "_SOUND_PAD"):
-        shutil.copy(FIX / "card" / f"{TAKE}{suffix}.wav", multi)
+    shutil.copy(FIX / "card" / f"{TAKE}.wav", vol)
+    shutil.copy(FIX / "card" / f"{TAKE}_USB.wav", multi)
+    inbox = tmp_path / "inbox" / TAKE
+    inbox.mkdir(parents=True)
+    shutil.copy(FIX / "card" / f"{TAKE}.wav", inbox)
+    shutil.copy(FIX / "card" / f"{TAKE}_USB.wav", inbox)
+    for root in (vol, tmp_path / "inbox"):
+        assert sorted(p.name for p in card.card_takes(root)[TAKE]) == \
+            [f"{TAKE}.wav", f"{TAKE}_USB.wav"]
+
+
+def test_copy_takes_links_inbox_takes_into_the_recording(tmp_path):
+    inbox = tmp_path / "inbox"
+    shutil.copytree(FIX / "card", inbox / TAKE)
     day = tmp_path / "day"
     day.mkdir()
     # bext says 22:08:21, so a recording named 22:08:45 owns it.
     (day / "2026-11-14 22-08-45.mkv").write_bytes(b"")
+    (day / "2026-11-14 18-00-00.mkv").write_bytes(b"")
     lines = []
-    matched = card.copy_takes(day, vol, out=lines.append)
+    matched = card.copy_takes(day, inbox, out=lines.append)
     assert matched == {TAKE: "2026-11-14 22-08-45"}
-    copied = sorted(p.name for p in (day / "2026-11-14 22-08-45" / "card").iterdir())
-    assert copied == sorted([f"{TAKE}.wav", f"{TAKE}_MIC1.wav", f"{TAKE}_USB.wav",
-                             f"{TAKE}_SOUND_PAD.wav"])
-    assert (vol / f"{TAKE}.wav").exists() and len(list(multi.iterdir())) == 3
-    # A second run copies nothing new.
+    got = sorted(p.name for p in (day / "2026-11-14 22-08-45" / "card").iterdir())
+    assert got == sorted(p.name for p in (FIX / "card").iterdir())
+    assert not (day / "2026-11-14 18-00-00").exists()
+    assert len(list((inbox / TAKE).iterdir())) == 5      # inbox untouched
     lines.clear()
-    card.copy_takes(day, vol, out=lines.append)
-    assert "0 file(s) copied" in lines[0]
+    card.copy_takes(day, inbox, out=lines.append)
+    assert "0 file(s) linked or copied" in lines[0]
 
 
-def test_copy_takes_without_a_card_does_nothing(tmp_path):
+def test_copy_takes_without_an_inbox_does_nothing(tmp_path):
+    (tmp_path / "2026-11-14 22-08-45.mkv").write_bytes(b"")
     assert card.copy_takes(tmp_path, tmp_path / "missing") == {}
+    assert not (tmp_path / "2026-11-14 22-08-45").exists()

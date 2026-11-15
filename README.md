@@ -78,9 +78,29 @@ Clip generation and P4next pad setup are in the [setup guide](docs/setup-guide.h
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
 | `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio is the master mix (legacy files: you=L / caller=R) |
+| `ripcard` | `pull_card.sh` | with the P4next in USB File Transfer: copy new card takes to `~/Desktop/P4next-takes/` (`CARD_INBOX` overrides), skip silent MIC2-4, eject, then tell you to exit File Transfer |
 
 The aliases live in my gutils shell config, not here. Every script works without them:
 `bash bin/<script>.sh ...` from the repo root.
+
+## P4next card takes
+
+The P4next writes every channel to its microSD card as a backup of the OBS recording.
+After a call: USB File Transfer on the P4next, `ripcard`, then exit File Transfer as soon
+as it says so (in that mode the Mac hears no computer audio). For a call worth keeping,
+move its take folder from `~/Desktop/P4next-takes/` into the day folder next to the
+`.mkv` and rename it to match:
+
+```
+call_logs/2026-w47/2026-11-17/
+  2026-11-17-corey-sync.mkv
+  2026-11-17-corey-sync.card/      <- was P4next-takes/261117_095958/, files keep their names
+```
+
+`ripa` reads the take where it sits, lines it up with the video from the pad presses
+(`align.json`), fills any OBS dropout from it, and `ripv` uses its stereo mix as the
+watch-video soundtrack. An unrenamed take folder in the day folder is paired by start
+time instead. Press pad A once right after starting both recorders.
 
 ## Typical session
 

@@ -139,36 +139,41 @@
 <h1>casting-call: New-Machine Setup, End to End</h1>
 
 <p>Everything it takes to go from a fresh Mac to a working call-recording rig: install the tools,
-record a screen call as four audio tracks (a master mix, you, the far side, and a marker track), and
-turn it into a transcript with your flagged moments dropped in at the right spot. Follow it top to
-bottom the first time.</p>
+wire the Zoom PodTrak P4next, record a screen call as four audio tracks (a master mix, you, the far
+side, and a marker track) with the P4next's card as a backup, and turn it into a transcript with
+your flagged moments dropped in at the right spot. Follow it top to bottom the first time.</p>
 
 <p>Sections are tagged <span class="tag cli">terminal</span> when they are copy-paste commands
 (safe to hand to an agent) or <span class="tag gui">in the app</span> when they are clicks in OBS
-or Stream Deck that only a human can do. The flow the whole thing produces is in
+or on the P4next that only a human can do. The flow the whole thing produces is in
 <code>docs/pipeline-flow.html</code> if you want the picture first.</p>
 
 <h2>What you end up with</h2>
 
-<p>OBS records your screen plus four audio tracks into one <code>.mkv</code>. Track 1 is the
-master mix of everything, Track 2 is your mic, Track 3 is system audio (everything that is not your
-mic or a marker: Chrome where Meet runs, Slack, Zoom, Roam, Safari), and Track 4 is silent except for the short "mark topic" / "mark
-action for me" clips a Stream Deck button fires. After the call, one command splits the
-tracks, transcribes them, cleans up the junk Whisper invents on silence, and folds your markers in
-as <code>[MARKER]</code> lines. If the far side ever drops out, the captions on screen are the backup.</p>
+<p>The P4next is the Mac's audio interface. Your mic plugs into it, Meet uses it as mic and
+speaker, and it feeds OBS every channel separately over USB. OBS records your screen plus four
+audio tracks into one <code>.mkv</code>: Track 1 is the master mix, Track 2 is your mic, Track 3 is
+computer audio (Meet, Slack, Zoom, everything the Mac plays), and Track 4 is silent except where you
+pressed pad A, which plays a short clip that says "marker". At the same time the P4next writes every
+channel to its own microSD card with no Mac software in the path.</p>
+
+<p>After the call, one command splits the tracks, transcribes them, cleans up the junk Whisper
+invents on silence, and folds your presses in as <code>[MARKER] marker</code> lines with a
+full-resolution screen grab each. If an OBS track dropped, it fills the gap from the card take. If
+there is no card take, the Meet captions on screen are the backup.</p>
 
 <h2>Part 1: The command line <span class="tag cli">terminal</span></h2>
 
 <p>This whole part is safe to run start to finish. It installs the tools, pulls the repo, and
-regenerates the marker clips locally (the <code>.wav</code> files are gitignored, so they do not
+regenerates the marker clip locally (the <code>.wav</code> files are gitignored, so they do not
 come down with the clone).</p>
 
 <pre><code># Homebrew, if this machine does not have it yet
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Tools: ffmpeg + whisper for audio, tesseract for the caption fallback, the apps
+# Tools: ffmpeg + whisper for audio, tesseract for the caption fallback, OBS
 brew install ffmpeg whisper-cpp tesseract
-brew install --cask obs elgato-stream-deck
+brew install --cask obs
 
 # Python deps (Homebrew's python3; --break-system-packages is required on it)
 pip3 install --break-system-packages pillow numpy pytesseract pytest
@@ -213,7 +218,58 @@ If <code>python3</code> offers to install "command line developer tools," let it
 last two commands. The scripts and Whisper only need what you just installed.
 </blockquote>
 
-<h2>Part 2: OBS, recording four tracks <span class="tag gui">in the app</span></h2>
+<h2>Part 2: The P4next <span class="tag gui">in the app</span></h2>
+
+<ol>
+<li>Plug the RØDE PodMic into <strong>INPUT 1</strong>, your headphones into the P4next, and the
+P4next into the Mac over USB. Put a microSD card in it and leave it there.</li>
+<li>In the P4next <strong>Menu</strong>, set:
+  <table>
+  <tr><th>Setting</th><th>Value</th></tr>
+  <tr><td>Recording file type</td><td>Multi Track</td></tr>
+  <tr><td>USB Audio Interface Mode</td><td>Multi Track</td></tr>
+  <tr><td>Mix Minus</td><td>On</td></tr>
+  <tr><td>Play Key in Rec</td><td>Mark Only</td></tr>
+  </table>
+</li>
+<li>On the Mac, set both <strong>System Settings, Sound</strong> input and output to
+<code>ZOOM P4next</code>. In Meet, pick <code>ZOOM P4next</code> as mic and speaker. Meet uses USB
+channel 1, your mic.</li>
+</ol>
+
+<p>Over USB the P4next hands the Mac these channels. Channels 11 and 12 leave out the computer audio
+because Mix Minus is On, so OBS builds the master mix on Track 1 itself.</p>
+
+<table>
+<tr><th>P4next USB channel</th><th>Carries</th></tr>
+<tr><td>1</td><td>your mic (INPUT 1)</td></tr>
+<tr><td>7 and 8</td><td>computer audio (every app the Mac plays)</td></tr>
+<tr><td>9 and 10</td><td>sound pads</td></tr>
+<tr><td>11 and 12</td><td>P4next master (not used)</td></tr>
+</table>
+
+<blockquote>
+<strong>Mute in Meet, never with MUTE 1 on the P4next.</strong> Meet's mute stops the far side
+hearing you, but your muted notes still land on the card and on OBS Track 2, which is how "action
+item" and "notes notes notes" said into a muted mic reach the transcript. MUTE 1 silences the mic
+everywhere, card included.
+</blockquote>
+
+<h2>Part 3: The marker pad <span class="tag gui">in the app</span></h2>
+
+<ol>
+<li>On the P4next, open <strong>Menu, USB File Transfer</strong> so the card mounts on the Mac as
+<code>/Volumes/P4NEXT_SD</code>. Copy <code>obs/marker-clips/MARKER.WAV</code> into the card's
+<code>P4next_SoundPad</code> folder, then eject and leave USB File Transfer.</li>
+<li><strong>Menu, Sound Pad, A, Sound Assign</strong>: pick <code>MARKER.WAV</code>.
+<strong>Play Mode</strong>: One-Shot.</li>
+</ol>
+
+<p>Pad A plays on USB channels 9 and 10, which only OBS Track 4 records (Part 4). Mix Minus keeps it
+out of what Meet hears, so the far side never hears a press. It does land in the card's stereo mix,
+which is what you want when you scrub the watch video later.</p>
+
+<h2>Part 4: OBS, recording four tracks <span class="tag gui">in the app</span></h2>
 
 <p>OBS records MKV on purpose. If a recording ever crashes, an MKV is still readable where an MP4
 would be corrupt. You never remux it; the pipeline reads the MKV directly.</p>
@@ -224,231 +280,49 @@ would be corrupt. You never remux it; the pipeline reads the MKV directly.</p>
 On the <strong>Recording</strong> tab set <strong>Recording Format</strong> to
 <strong>Matroska Video (.mkv)</strong>, and under <strong>Audio Track</strong> check
 <strong>1, 2, 3, and 4</strong>.</li>
-<li><strong>Sources.</strong> Add these to your scene:
+<li><strong>Settings, Audio.</strong> Set every <strong>Global Audio Device</strong> (Desktop Audio
+and Mic/Auxiliary Audio) to <strong>Disabled</strong>. Left on, they record the P4next a second time
+onto every track.</li>
+<li>Create a scene named <code>Call P4</code> and add these sources to it:
   <ol>
-  <li><strong>Display Capture</strong> (or Window Capture) for the screen. This is the video.</li>
-  <li><strong>Audio Input Capture</strong> pointed at your mic (the Elgato Wave). This is you.</li>
-  <li><strong>Application Audio Capture</strong> targeting <strong>Google Chrome</strong>, not the
-  Meet PWA. Chrome routes call audio through one process that captures reliably; the PWA often
-  records silent.</li>
+  <li><strong>Display Capture</strong> (or Window Capture) for the screen. This is the video. Leave
+  its audio off.</li>
+  <li>Three <strong>Audio Input Capture</strong> sources, each on device <code>ZOOM P4next</code>,
+  with the channels below picked for left and right:
+  <table>
+  <tr><th>Source name</th><th>Channels (left / right)</th><th>Tracks</th></tr>
+  <tr><td><code>P4 Mic</code></td><td>Ch 1 / Ch 1</td><td>1 and 2</td></tr>
+  <tr><td><code>P4 Computer</code></td><td>Ch 7 / Ch 8</td><td>1 and 3</td></tr>
+  <tr><td><code>P4 Marker</code></td><td>Ch 9 / Ch 10</td><td>4 only</td></tr>
+  </table>
+  </li>
   </ol>
 </li>
 <li><strong>Assign tracks.</strong> Click the gear in the Audio Mixer, choose
-<strong>Advanced Audio Properties</strong>. For each source, use the <strong>Tracks</strong>
-checkboxes on the right:
-  <ul>
-  <li>Mic (you): Tracks <strong>1</strong> and <strong>2</strong>.</li>
-  <li>Chrome (far side): Tracks <strong>1</strong> and <strong>3</strong>.</li>
-  <li>Display Capture: Tracks <strong>1</strong> and <strong>3</strong>. If its audio duplicates
-  what Chrome already captures, the far side lands on Track 3 twice; unchecking its tracks is fine.</li>
-  </ul>
-</li>
+<strong>Advanced Audio Properties</strong>. For each of the three P4 rows, check exactly the
+<strong>Tracks</strong> in the table above and set <strong>Audio Monitoring</strong> to
+<strong>Monitor Off</strong>. You already hear everything live through the P4next's headphone
+out, so OBS monitoring would only add a delayed second copy in your ears. <code>P4 Marker</code>
+must never touch Tracks 1, 2 or 3, or Whisper transcribes the clip as speech.</li>
 </ol>
 
 <blockquote>
-Do not switch your Mac's audio devices to route the call. That was the old rig, and it dropped the
-mic to Meet mid-call. OBS only reads audio, so Meet keeps your real mic and headphones. Leave them
-alone.
-</blockquote>
-
-<h2>Part 3: The marker track <span class="tag gui">in the app</span></h2>
-
-<p><strong>Current rig (2026-11-14 on): one pad on the Zoom PodTrak P4next.</strong></p>
-<ol>
-<li>On the P4next, open <strong>USB File Transfer</strong> so the card mounts on the Mac. Copy
-<code>obs/marker-clips/MARKER.WAV</code> into the card's <code>P4next_SoundPad</code> folder, then
-eject and leave USB File Transfer.</li>
-<li><strong>Menu, Sound Pad, A, Sound Assign</strong>: pick <code>MARKER.WAV</code>.
-<strong>Play Mode</strong>: One-Shot.</li>
-<li>In OBS, the P4next's sound pads channel pair (USB mode Multi Track) feeds Track 4 only, never
-Tracks 2 or 3. Monitoring off.</li>
-<li>Press pad A once on a test recording and confirm one <code>[MARKER] marker</code> line, a PNG in
-<code>&lt;name&gt;/markers/</code>, and nothing audible to the far side.</li>
-</ol>
-
-<p>The Stream Deck instructions below are the old seven-clip rig. <code>ripa</code> still reads
-recordings made with it, but new recordings do not need it.</p>
-
-<p>This is the piece that makes markers work without any syncing. Seven clips, each on its own
-media source, all routed to Track 4 (and the master on Track 1), none of them ever heard by anyone live.</p>
-
-<p><strong>Already have the old five- or seven-key rig?</strong> Do not rebuild it. Skip to
-<a href="#migrate">Migrating an existing rig</a> below, which is three renames and nothing else.</p>
-
-<p>Build each source exactly once, then repeat six times. The source names below are not cosmetic:
-Stream Deck binds its keys to the source <em>name</em>, so a typo here means a dead key later.</p>
-
-<ol>
-<li>In the <strong>Sources</strong> panel, click <strong>+</strong> and choose
-<strong>Media Source</strong>.</li>
-<li>Leave <strong>Create new</strong> selected. Type the source name from the table below, exactly
-as written. Click <strong>OK</strong>.</li>
-<li>In the properties window that opens:
-  <ul>
-  <li><strong>Local File</strong>: click Browse and pick the matching <code>.wav</code> from
-  <code>obs/marker-clips/</code>.</li>
-  <li><strong>Uncheck Loop.</strong> If this stays checked the clip repeats for the whole call and
-  every marker in the transcript is garbage.</li>
-  <li><strong>Check "Restart playback when source becomes active."</strong></li>
-  <li>Leave everything else at its default. Click <strong>OK</strong>.</li>
-  </ul>
-</li>
-<li>Repeat for all seven rows.</li>
-</ol>
-
-<table>
-<tr><th>Source name (type it exactly)</th><th>File to browse to</th></tr>
-<tr><td><code>Mark Topic</code></td><td><code>obs/marker-clips/mark-topic.wav</code></td></tr>
-<tr><td><code>Mark Action Me</code></td><td><code>obs/marker-clips/mark-action-me.wav</code></td></tr>
-<tr><td><code>Mark Action Them</code></td><td><code>obs/marker-clips/mark-action-them.wav</code></td></tr>
-<tr><td><code>Mark Important</code></td><td><code>obs/marker-clips/mark-important.wav</code></td></tr>
-<tr><td><code>Mark Question</code></td><td><code>obs/marker-clips/mark-question.wav</code></td></tr>
-<tr><td><code>Mark Quote</code></td><td><code>obs/marker-clips/mark-quote.wav</code></td></tr>
-<tr><td><code>Mark Video</code></td><td><code>obs/marker-clips/mark-video.wav</code></td></tr>
-</table>
-
-<p>Now route all seven to Track 4 in one pass:</p>
-
-<ol>
-<li>Right-click any source, choose <strong>Advanced Audio Properties</strong>. Every source in the
-scene is listed as a row.</li>
-<li>For each of the seven marker rows:
-  <ul>
-  <li><strong>Tracks</strong>: check <strong>1</strong> and <strong>4</strong>, and uncheck
-  <strong>2</strong> and <strong>3</strong>. Markers must never touch the voice tracks, or Whisper
-  transcribes them as speech.</li>
-  <li><strong>Audio Monitoring</strong>: <strong>Monitor Off</strong>. This is what keeps the clip
-  out of your headphones and, more importantly, out of anything Meet can pick up. It still records
-  to Tracks 1 and 4.</li>
-  </ul>
-</li>
-<li>Close the window. There is no Save button; the settings apply as you set them.</li>
-</ol>
-
-<blockquote>
-<strong>Why nobody hears it:</strong> an OBS media source plays inside OBS. With Monitor Off, OBS
-records it to Tracks 1 and 4 but never sends it to an output device, and OBS never feeds audio back into
-your mic or Meet. So the marker is silent to you and to the caller, and still lands in the file.
-</blockquote>
-
-<h2>Part 4: Stream Deck buttons <span class="tag gui">in the app</span></h2>
-
-<ol>
-<li>Open the Stream Deck app and install the official <strong>OBS Studio</strong> plugin from its
-Marketplace.</li>
-<li>In OBS, enable <strong>Tools, WebSocket Server Settings, Enable WebSocket server</strong> so
-Stream Deck can talk to it. If the Stream Deck plugin shows a red or grey status dot, it is this
-setting.</li>
-<li><strong>Start / Stop.</strong> Drag the OBS <strong>Start Recording</strong> action onto a key,
-and <strong>Stop Recording</strong> onto another.</li>
-<li><strong>The seven marker keys.</strong> For each one:
-  <ul>
-  <li>Search <strong>media</strong> in the actions list and drag <strong>Media Source Control</strong>
-  onto an empty key.</li>
-  <li><strong>Media Source</strong>: pick the source name from the table below. If the dropdown is
-  empty, OBS is not connected; fix step 2 first.</li>
-  <li><strong>Action</strong>: <strong>Restart</strong>. This is the one that works. "Source
-  Visibility" does not trigger playback, so do not use it here.</li>
-  <li><strong>Title</strong>: the key label from the table, so you can read the deck mid-call
-  without thinking.</li>
-  </ul>
-</li>
-</ol>
-
-<table>
-<tr><th>Key label</th><th>Media Source</th><th>Action</th></tr>
-<tr><td>Topic</td><td><code>Mark Topic</code></td><td>Restart</td></tr>
-<tr><td>Me</td><td><code>Mark Action Me</code></td><td>Restart</td></tr>
-<tr><td>Them</td><td><code>Mark Action Them</code></td><td>Restart</td></tr>
-<tr><td>Important</td><td><code>Mark Important</code></td><td>Restart</td></tr>
-<tr><td>Question</td><td><code>Mark Question</code></td><td>Restart</td></tr>
-<tr><td>Quote</td><td><code>Mark Quote</code></td><td>Restart</td></tr>
-<tr><td>Video</td><td><code>Mark Video</code></td><td>Restart</td></tr>
-</table>
-
-<p>Put <strong>Me</strong> and <strong>Them</strong> next to each other on the deck. They are the
-pair you will fumble between under pressure, and a wrong press puts someone else's task on your
-list.</p>
-
-<h3>What the seven keys mean</h3>
-
-<table>
-<tr><th>Key</th><th>Clip says</th><th>Transcript type</th><th>Press it when</th></tr>
-<tr><td>Mark Topic</td><td>"mark topic"</td><td><code>topic</code></td><td>the conversation moves to a new subject. These are the dividers the digest reads to cut the call into sections.</td></tr>
-<tr><td>Mark Action Me</td><td>"mark action for me"</td><td><code>action-me</code></td><td>you just picked up something you have to do.</td></tr>
-<tr><td>Mark Action Them</td><td>"mark action for them"</td><td><code>action-them</code></td><td>someone on the far side owes you something, or you need to chase it later.</td></tr>
-<tr><td>Mark Important</td><td>"mark important"</td><td><code>important</code></td><td>it matters and does not fit any other key.</td></tr>
-<tr><td>Mark Question</td><td>"mark question"</td><td><code>question</code></td><td>you have a follow-up question. Say it into your muted mic right after the press so the digest captures the wording.</td></tr>
-<tr><td>Mark Quote</td><td>"mark quote"</td><td><code>quote</code></td><td>somebody said something worth repeating verbatim.</td></tr>
-<tr><td>Mark Video</td><td>"mark video"</td><td><code>video</code></td><td>something is on screen worth keeping. This is the only key that makes the digest pull a screenshot.</td></tr>
-</table>
-
-<blockquote>
-<strong>The eighth type you never press.</strong> Both action clips say "action", so the parser
-checks "for them" and "for me" before it falls back to a bare <code>action</code> type. That
-fallback has no key. It only catches a press where whisper dropped the trailing word, and it shows
-up in the digest as owner-unknown rather than being quietly filed onto the wrong side.
-</blockquote>
-
-<h3 id="migrate">Migrating an existing rig</h3>
-
-<p>If you already ran the flag / important / action / question / quote / video / follow set, you do
-not add or delete a single source. Four of the seven are unchanged, and the other three are a rename
-plus a new file. The clips were regenerated in place, so
-<code>mark-important.wav</code>, <code>mark-question.wav</code>, <code>mark-quote.wav</code> and
-<code>mark-video.wav</code> keep their names and their sources need no attention at all.</p>
-
-<p>Regenerate the clips first (the loop in Part 1), then in OBS:</p>
-
-<table>
-<tr><th>Old source</th><th>Rename to</th><th>Repoint Local File to</th></tr>
-<tr><td><code>Mark Flag</code></td><td><code>Mark Topic</code></td><td><code>mark-topic.wav</code></td></tr>
-<tr><td><code>Mark Action</code></td><td><code>Mark Action Me</code></td><td><code>mark-action-me.wav</code></td></tr>
-<tr><td><code>Mark Follow Up</code></td><td><code>Mark Action Them</code></td><td><code>mark-action-them.wav</code></td></tr>
-</table>
-
-<ol>
-<li>Double-click the old source in the <strong>Sources</strong> panel to open its properties, click
-<strong>Browse</strong>, and pick the new <code>.wav</code>. Click <strong>OK</strong>.</li>
-<li>Right-click the source, choose <strong>Rename</strong>, and type the new name exactly.</li>
-<li>Repeat for the other two rows.</li>
-<li>The three old files (<code>mark-flag.wav</code>, <code>mark-action.wav</code>,
-<code>mark-follow.wav</code>) are gone after a regenerate. Nothing points at them any more.</li>
-</ol>
-
-<blockquote>
-<strong>Renaming in OBS can orphan the Stream Deck key.</strong> The plugin binds to the source
-name, and it does not reliably follow a rename. After the three renames, open each of those three
-keys in the Stream Deck app and re-pick the <strong>Media Source</strong> from the dropdown, even if
-it looks correct. Then press all seven keys once and confirm in Part 5 that seven marker lines come
-back with seven distinct types.
-</blockquote>
-
-<blockquote>
-<strong>Old transcripts are not rewritten.</strong> Anything recorded before this change still has
-<code>[MARKER] flag</code> and <code>[MARKER] follow</code> lines in it. The parser no longer
-produces those types, and the digest will list them in its trailing "unrecognized" group rather than
-dropping them. That is deliberate: old calls stay readable, and nothing silently disappears.
-</blockquote>
-
-<blockquote>
-<strong>The one gotcha that will silently eat your markers:</strong> the marker sources live on
-Track 4, so the recording output has to actually record Track 4, and each clip has to be routed to
-it. Confirm Settings, Output, Recording has Audio Tracks 1 through 4 checked. If Track 4 is off or
-the clips go elsewhere, the buttons fire, the clips play, and none of it ends up where the pipeline
-looks. <code>ripa</code> warns when the marker track is digital silence; if the clips landed on
-another track, rerun with <code>MARKER_TRACK=&lt;that track&gt;</code>. Sanity check a test
-recording with <code>ffprobe recording.mkv</code> and count four audio streams.
+<strong>The one setting that will silently eat your markers:</strong> the recording output has to
+record Track 4, and <code>P4 Marker</code> has to feed it. If either is off, the pad plays and none
+of it ends up where the pipeline looks. <code>ripa</code> warns when the marker track is digital
+silence, and with a card take it reads the presses from the card's pad file instead. Sanity check a
+test recording with <code>ffprobe recording.mkv</code> and count four audio streams.
 </blockquote>
 
 <h2>Part 5: Prove it works before a real call <span class="tag cli">terminal</span> + <span class="tag gui">in the app</span></h2>
 
 <ol>
-<li>In OBS, press <strong>Start</strong>, talk for a few seconds, then press <strong>all seven
-marker keys</strong> with a beat between each, and press <strong>Stop</strong>. Press all seven, not
-a couple: the point of the test is that each key produces a <em>different</em> type, which is
-exactly what a mis-bound key breaks. Move the resulting <code>.mkv</code> into a folder, say
-<code>~/calls/test/</code>.</li>
+<li>Start recording in OBS and press <strong>REC</strong> on the P4next, then press
+<strong>pad A once</strong>. Talk for a few seconds, play a few seconds of any video on the Mac,
+press pad A again, and stop both.</li>
+<li>Move the <code>.mkv</code> into a folder, say <code>~/calls/test/</code>. On the P4next open
+<strong>USB File Transfer</strong> so the card mounts; <code>ripa</code> copies the matching card
+take into <code>&lt;name&gt;/card/</code> on its own.</li>
 <li>Confirm the file really has four audio tracks:
 <pre><code>ffprobe -v error -show_entries stream=index,codec_type -of csv ~/calls/test/*.mkv
 # expect one 'video' line and four 'audio' lines</code></pre>
@@ -457,42 +331,53 @@ exactly what a mis-bound key breaks. Move the resulting <code>.mkv</code> into a
 <pre><code>cd ~/Developer/casting-call
 bash bin/extract_audio_stereo.sh ~/calls/test
 cat ~/calls/test/*/*.txt</code></pre>
-You should see <code>[You]</code> and <code>[Caller]</code> lines with <code>[MARKER]</code> lines
-sitting inline wherever you pressed a key.</li>
-<li>Check that all seven types came back distinct:
-<pre><code>grep '\[MARKER\]' ~/calls/test/*/*.txt | awk '{print $NF}' | sort | uniq -c
-# expect exactly one each of:
-#   action-me  action-them  important  question  quote  topic  video</code></pre>
-A missing type means that key is bound to the wrong source or set to something other than Restart.
-A stray <code>action</code> with no owner means whisper clipped the trailing word on that press;
-re-record that clip with a longer trailing pad.</li>
+You should see <code>[You]</code> and <code>[Caller]</code> lines, two <code>[MARKER] marker</code>
+lines where you pressed pad A, a PNG for each in <code>&lt;name&gt;/markers/</code>, and a header
+line saying the card lined up by the marker method.</li>
 </ol>
 
-<p>If all seven types come back distinct, they land in the right place, and nobody heard them during
-the test, the rig is done.</p>
+<p>If both presses come back, the card lines up, and nobody on the far side heard the pad, the rig
+is done.</p>
 
 <h2>Part 6: The daily loop</h2>
 
 <ol>
-<li>Start recording in OBS (or via the Stream Deck key). Tap the marker keys during the call
-whenever something matters.</li>
-<li>Stop. Drop the <code>.mkv</code> in a folder.</li>
+<li>Start recording in OBS and on the P4next, then <strong>press pad A once</strong> right away.
+That first press is what lines the card up with the video to the millisecond. Press it again during
+the call whenever something matters.</li>
+<li>Stop both. Drop the <code>.mkv</code> in a folder. Mount the card with <strong>USB File
+Transfer</strong> before the next step if you want the backup. Nothing is ever deleted from the
+card.</li>
 <li><code>bash bin/extract_audio_stereo.sh &lt;folder&gt;</code>. That is the transcript, markers and all,
-ready to hand to an LLM.</li>
+ready to hand to an LLM, plus a health line per track saying whether OBS dropped anything and
+whether the card covered it.</li>
 <li>Optional, only when you want to watch it back:
-<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code> with the master
-mix (Track 1) as its audio.</li>
+<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code>. With a card
+take its soundtrack is the card's stereo mix, lined up to the video; without one it is OBS Track 1.</li>
 <li>Optional, to put real names on the far-side lines:
 <code>bash bin/extract_speakers.sh &lt;recording&gt; --region x,y,w,h --transcript &lt;transcript&gt;</code>.</li>
 </ol>
 
-<h2>Part 7: When the far side drops out</h2>
+<blockquote>
+<strong>Older recordings still work.</strong> Files from the Elgato Wave and Stream Deck rig, with
+seven marker clips on Track 4, are read the same way they always were: <code>ripa</code> listens to
+the first few presses and switches to the seven-clip parser when it hears one of the old phrases.
+<code>MARKER_MODE=legacy</code> forces it.
+</blockquote>
 
-<p>The system-audio capture can die mid-call and record silence from that point on. The lines
-Whisper would have invented on that dead audio are stripped automatically, so the transcript does
-not fill up with fake "thank you" and "subtitles by" junk.</p>
+<h2>Part 7: When an OBS track drops out</h2>
 
-<p>For Google Meet calls the words come back on their own. Any stretch of a minute or more where
+<p>OBS audio capture can die mid-call and record silence from that point on, with no error in its
+log. The lines Whisper would have invented on that dead audio are stripped automatically, so the
+transcript does not fill up with fake "thank you" and "subtitles by" junk.</p>
+
+<p><strong>With a card take</strong>, the gap is filled from the card. <code>ripa</code> lines the
+card up with the video (pad presses first, then speech, then the two clocks), and any stretch where
+OBS Track 2 or Track 3 is silent while the card's <code>MIC1</code> or <code>USB</code> file has
+sound is cut from the card and spliced in before transcription. The transcript header names which
+spans came from the card and how it was lined up.</p>
+
+<p><strong>Without a card take</strong>, for Google Meet calls, any stretch of a minute or more where
 Track 3 is quiet gets the Meet captions read over just that stretch. If they show someone other
 than you talking, the capture dropped, and their caption lines are spliced into the transcript as
 <code>[Caller]</code> lines. The transcript from before the splice is kept as
@@ -510,7 +395,7 @@ check off.</p>
 transcript has a gap. To rebuild a whole recording from a fixed caption region by hand:</p>
 <pre><code>bash bin/stitch_captions.sh &lt;recording&gt; --region x,y,w,h</code></pre>
 
-<p class="meta">casting-call · new-machine setup · 2026-07-24</p>
+<p class="meta">casting-call · new-machine setup · 2026-11-14</p>
 <!-- ===== CONTENT END ===== -->
 
 <script>

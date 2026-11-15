@@ -298,6 +298,7 @@ def align_take(obs_markers=None, card_pads=None, speech_pairs=(), card_start=Non
 
 def write_align(name_dir, result):
     path = Path(name_dir) / "align.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return path
 

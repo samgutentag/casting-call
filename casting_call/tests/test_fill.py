@@ -113,7 +113,7 @@ def test_no_card_take_changes_nothing(tmp_path):
 
 def test_mic_dropout_is_filled_from_the_card(tmp_path):
     name_dir = tmp_path / "rec"
-    shutil.copytree(FIX / "card", name_dir / "card")
+    shutil.copytree(FIX / "card", tmp_path / "rec.card")
     wavs = _extract(tmp_path)
     _zero(wavs["you"], 0.0, 3.5)   # OBS mic dead over the fixture's first words
     summary = fill.run(name_dir, str(MKA), wavs, out=lambda s: None)
@@ -136,7 +136,7 @@ def test_mic_dropout_is_filled_from_the_card(tmp_path):
 
 def test_dead_marker_track_is_rebuilt_from_the_pad_file(tmp_path):
     name_dir = tmp_path / "rec"
-    shutil.copytree(FIX / "card", name_dir / "card")
+    shutil.copytree(FIX / "card", tmp_path / "rec.card")
     wavs = _extract(tmp_path)
     _zero(wavs["markers"], 0.0, 99.0)
     summary = fill.run(name_dir, str(MKA), wavs, out=lambda s: None)

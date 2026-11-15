@@ -2,7 +2,8 @@
 fill — patch OBS audio dropouts from the P4next card take, before transcription.
 
 ripa calls this right after it splits the .mkv into 16 kHz mono WAVs, and only
-when <name>/card/ holds a take. With no take it is never called, so a
+when a card take sits next to the recording (<name>.card/, or an unrenamed
+take folder paired by start time; see card.lookup_card_take). With no take it is never called, so a
 recording without a card runs exactly as it did before the card existed.
 
 Steps:
@@ -250,7 +251,9 @@ def run(name_dir, video, wavs, out=print, workdir=None):
 
     wavs: {'you': path, 'caller': path, 'markers': path or None}.
     """
-    take = card.find_card_take(name_dir)
+    take, note = card.lookup_card_take(name_dir, video)
+    if note:
+        out(f"card: {note}")
     if take is None:
         return None
     own_tmp = workdir is None
@@ -267,7 +270,7 @@ def _run(name_dir, video, wavs, take, workdir, out):
     summary = {"tracks": {}, "markers": "OBS", "cues": [], "filled_caller": [],
                "health": [], "header": []}
     if take.unknown:
-        out(f"card: ignoring {len(take.unknown)} unknown file(s) in card/: "
+        out(f"card: ignoring {len(take.unknown)} unknown file(s) in {take.folder.name}/: "
             + ", ".join(p.name for p in take.unknown))
 
     def role_path(role):

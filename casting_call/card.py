@@ -16,14 +16,22 @@ chunk (date, start time, time reference) and a `cue ` chunk with one point per
 PLAY-key press, as a sample offset. Both are read here with the standard library.
 
 The card is only mounted long enough for bin/pull_card.sh (pull.py) to copy
-new takes into a local inbox, because in USB File Transfer mode the P4next stops
-being the Mac's audio device. ripa then matches inbox takes to recordings and
-links (or copies) each into <name>/card/ (flat); everything after that reads
-only from there. ripa never reads the mounted card.
+new takes into a staging inbox, because in USB File Transfer mode the P4next
+stops being the Mac's audio device. Sam then moves the takes that matter next
+to their recordings by hand, and ripa reads them where they sit:
+
+    <day>/2026-11-10-corey-sync.mkv
+    <day>/2026-11-10-corey-sync.card/      take folder renamed to match (rule 1)
+    <day>/261110_140212/                   or left unrenamed (rule 2: paired by
+                                           bext start against the .mkv's birth
+                                           time, refused past 10 minutes)
+
+ripa never reads the mounted card or the inbox, and never moves or copies a
+take; only align.json and the other outputs go into <day>/<name>/.
 
 Usage:
-    python3 -m casting_call.card copy <day_dir> [--inbox ~/Desktop/P4next-takes]
-    python3 -m casting_call.card input-args <name_dir> <role>
+    python3 -m casting_call.card find <name_dir> [--video <mkv>]
+    python3 -m casting_call.card input-args <name_dir> <role> [--video <mkv>]
 """
 
 from __future__ import annotations
@@ -32,7 +40,6 @@ import argparse
 import datetime as dt
 import os
 import re
-import shutil
 import struct
 import subprocess
 import sys
@@ -40,7 +47,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 VOLUME = "/Volumes/P4NEXT_SD"
-INBOX = str(Path.home() / "Desktop" / "P4next-takes")
 MULTITRACK_DIR = "P4next_Multitrack"
 
 ROLES = ("mix", "mic", "usb", "pads")
@@ -54,9 +60,12 @@ _NAME_RE = re.compile(
 # OBS names recordings "YYYY-MM-DD HH-MM-SS.mkv".
 _OBS_NAME_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})[ _](\d{2})-(\d{2})-(\d{2})")
 
-# The P4next clock is set by hand and was 23 s behind the Mac on 2026-11-14, so
-# a take that starts this far before a recording still belongs to it.
-CLOCK_SLACK = 120.0
+_TAKE_DIR_RE = re.compile(r"^\d{6}_\d{6}$")
+
+# Rule 2 pairs an unrenamed take with a recording by start time. The P4next
+# clock is set by hand (23 s behind the Mac on 2026-11-14); past this gap the
+# take is more likely another call than clock drift.
+MAX_PAIR_GAP = 600.0
 
 
 # ── RIFF chunks ──────────────────────────────────────────────────────────────
@@ -164,6 +173,7 @@ def read_wav_info(path):
 @dataclass
 class CardTake:
     take: str                                    # "261114_220657"
+    folder: Path | None = None                   # where the take was read from
     roles: dict = field(default_factory=dict)    # role -> [Path], part order
     ignored: list = field(default_factory=list)  # MIC2..MIC4
     unknown: list = field(default_factory=list)
@@ -190,13 +200,13 @@ def classify(name):
     return m["take"], role, int(m["part"] or 1)
 
 
-def find_card_take(name_dir):
-    """The card take in <name_dir>/card/, or None if there is none.
+def read_take_dir(card_dir):
+    """The take inside one folder, or None if it holds none.
 
     Files that are not part of a take are listed as unknown and left alone.
     When the folder somehow holds two takes, the one with the most files wins.
     """
-    card_dir = Path(name_dir) / "card"
+    card_dir = Path(card_dir)
     if not card_dir.is_dir():
         return None
     takes, unknown = {}, []
@@ -212,7 +222,7 @@ def find_card_take(name_dir):
     if not takes:
         return None
     best = max(takes, key=lambda t: len(takes[t]))
-    out = CardTake(take=best, unknown=unknown)
+    out = CardTake(take=best, folder=card_dir, unknown=unknown)
     for t, files in takes.items():
         if t != best:
             out.unknown.extend(p for _r, _n, p in files)
@@ -222,6 +232,65 @@ def find_card_take(name_dir):
         else:
             out.roles.setdefault(role, []).append(p)
     return out
+
+
+def video_birth(video_path):
+    """When a recording started: the file's birth time (OBS creates it at the
+    start, and a same-volume mv keeps it), else the time in an OBS file name."""
+    try:
+        st = os.stat(video_path)
+        born = getattr(st, "st_birthtime", None)
+        if born:
+            return dt.datetime.fromtimestamp(born)
+    except OSError:
+        pass
+    return obs_start(video_path)
+
+
+def lookup_card_take(name_dir, video=None, max_gap=MAX_PAIR_GAP):
+    """(take or None, note or None) for the recording whose outputs go in name_dir.
+
+    Rule 1: <day>/<name>.card/. Rule 2: the unrenamed <day>/yymmdd_hhmmss/ take
+    whose bext start is closest to the video's birth time, within max_gap.
+    """
+    name_dir = Path(name_dir)
+    day, name = name_dir.parent, name_dir.name
+    take = read_take_dir(day / f"{name}.card")
+    if take:
+        return take, f"card take {take.take} from {name}.card/"
+    if not video:
+        return None, None
+    try:
+        dirs = [d for d in day.iterdir() if d.is_dir() and _TAKE_DIR_RE.match(d.name)]
+    except OSError:
+        return None, None
+    vstart = video_birth(video)
+    if not dirs or vstart is None:
+        return None, None
+    best = None
+    for d in sorted(dirs):
+        t = read_take_dir(d)
+        start = take_start(t) if t else None
+        if start is None:
+            continue
+        gap = (start - vstart).total_seconds()
+        if best is None or abs(gap) < abs(best[1]):
+            best = (t, gap)
+    if best is None:
+        return None, None
+    t, gap = best
+    when = "before" if gap < 0 else "after"
+    if abs(gap) > max_gap:
+        return None, (f"nearest unrenamed card take {t.folder.name}/ starts {abs(gap):.0f} s "
+                      f"{when} the recording, more than {max_gap / 60:.0f} min: not paired. "
+                      f"Rename it to {name}.card/ if it belongs to this call.")
+    return t, (f"card take {t.folder.name}/ paired by start time: it starts "
+               f"{abs(gap):.0f} s {when} the recording")
+
+
+def find_card_take(name_dir, video=None):
+    """The card take for a recording (see lookup_card_take), or None."""
+    return lookup_card_take(name_dir, video)[0]
 
 
 def take_start(take_or_path):
@@ -334,113 +403,32 @@ def card_takes(root):
     return takes
 
 
-def _probe_duration(path):
-    try:
-        proc = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                               "-of", "csv=p=0", str(path)], capture_output=True)
-        return float(proc.stdout.decode().strip())
-    except (FileNotFoundError, OSError, ValueError):
-        return 0.0
-
-
-def match_takes(recordings, takes, slack=CLOCK_SLACK):
-    """Pair takes with recordings by start time.
-
-    recordings: [(name, start datetime, duration s)], takes: {take: start datetime}.
-    A take belongs to the recording whose span, widened by `slack` at the front,
-    holds its start; the nearest start wins a tie. Returns ({take: name}, [unmatched]).
-    """
-    matched, left = {}, []
-    for take, start in sorted(takes.items()):
-        best, best_gap = None, None
-        for name, rstart, dur in recordings:
-            if rstart is None or start is None:
-                continue
-            delta = (start - rstart).total_seconds()
-            if -slack <= delta <= max(dur, 0.0):
-                if best_gap is None or abs(delta) < best_gap:
-                    best, best_gap = name, abs(delta)
-        if best:
-            matched[take] = best
-        else:
-            left.append(take)
-    return matched, left
-
-
-def link_or_copy(src, target):
-    """Hard-link src to target (free, same disk), else copy it."""
-    try:
-        os.link(src, target)
-    except OSError:
-        shutil.copy2(src, target)
-
-
-def copy_takes(day_dir, inbox=INBOX, out=print):
-    """Put every inbox take that belongs to a recording in day_dir into <name>/card/.
-
-    Matched by bext start time. Never deletes anything from the inbox. Files
-    already there at the same size are skipped. Returns {take: name}.
-    """
-    day_dir, inbox = Path(day_dir), Path(inbox)
-    if not inbox.is_dir():
-        return {}
-    videos = sorted(list(day_dir.glob("*.mkv")) + list(day_dir.glob("*.mp4")))
-    if not videos:
-        return {}
-    recordings = [(v.stem, obs_start(v), _probe_duration(v)) for v in videos]
-    takes = card_takes(inbox)
-    starts = {}
-    for take, files in takes.items():
-        mix = [p for p in files if classify(p.name)[1] == "mix"]
-        starts[take] = take_start((mix or files)[0])
-    matched, left = match_takes(recordings, starts)
-    # The inbox holds every take ever pulled, so the unmatched ones are only
-    # worth naming when they fall on the same day as a recording here.
-    days = {r[1].date() for r in recordings if r[1]}
-    left = [t for t in left if starts.get(t) and starts[t].date() in days]
-    for take, name in sorted(matched.items()):
-        dest = day_dir / name / "card"
-        try:
-            dest.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            out(f"card: cannot create {dest}: {e}")
-            continue
-        copied = 0
-        for src in sorted(takes[take]):
-            target = dest / src.name
-            try:
-                if target.exists() and target.stat().st_size == src.stat().st_size:
-                    continue
-                link_or_copy(src, target)
-                copied += 1
-            except OSError as e:
-                out(f"card: failed to copy {src.name}: {e}")
-        out(f"card: take {take} -> {name}/card/ ({copied} file(s) linked or copied, "
-            f"{len(takes[take]) - copied} already there)")
-    if left:
-        out(f"card: same-day takes with no matching recording here: {', '.join(sorted(left))}")
-    return matched
-
-
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Copy and read P4next card takes.")
+    ap = argparse.ArgumentParser(description="Find and read P4next card takes.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("copy", help="link matching inbox takes into <name>/card/")
-    c.add_argument("day_dir")
-    c.add_argument("--inbox", default=os.environ.get("CARD_INBOX", INBOX))
+    f = sub.add_parser("find", help="say which take belongs to a recording; exit 1 if none")
+    f.add_argument("name_dir")
+    f.add_argument("--video", default=None)
     i = sub.add_parser("input-args", help="ffmpeg input args for one role, one per line")
     i.add_argument("name_dir")
     i.add_argument("role", choices=ROLES)
+    i.add_argument("--video", default=None)
     args = ap.parse_args(argv)
 
-    if args.cmd == "copy":
-        copy_takes(args.day_dir, args.inbox)
-        return 0
-    take = find_card_take(args.name_dir)
+    take, note = lookup_card_take(args.name_dir, args.video)
+    if args.cmd == "find":
+        if note:
+            print(note)
+        return 0 if take else 1
     if take is None or not take.roles.get(args.role):
         return 1
-    list_path = Path(args.name_dir) / "card" / f".{args.role}.concat.txt"
-    print("\n".join(input_args(take.roles[args.role], list_path)))
+    name_dir = Path(args.name_dir)
+    try:
+        name_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"cannot create {name_dir}: {e}", file=sys.stderr)
+        return 1
+    print("\n".join(input_args(take.roles[args.role], name_dir / f".{args.role}.concat.txt")))
     return 0
 
 

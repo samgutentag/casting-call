@@ -20,10 +20,11 @@
 # full-resolution PNG at <name>/markers/marker-HHMMSS.png and a row in
 # <name>/markers.json, taken here because ripo trashes the .mkv later.
 #
-# P4next card backup (2026-11-14 on): takes pulled off the card with
-# pull_card.sh (ripcard) sit in ~/Desktop/P4next-takes (CARD_INBOX=<path>). The
-# take matching each recording is linked into <name>/card/ first. A mounted
-# card is ignored. With a take there, the card is lined up with
+# P4next card backup (2026-11-14 on): a card take pulled with pull_card.sh
+# (ripcard) and moved next to the recording is read where it sits, either as
+# <name>.card/ beside <name>.mkv, or as an unrenamed yymmdd_hhmmss/ folder
+# paired by start time (within 10 minutes). Neither the mounted card nor the
+# ripcard inbox is ever read. With a take there, the card is lined up with
 # the video (<name>/align.json), OBS dropouts on Tracks 2 and 3 are filled from
 # MIC1 and USB before transcription, a dead Track 4 is rebuilt from SOUND_PAD,
 # PLAY-key marks become markers, and a health line per track lands in
@@ -120,11 +121,6 @@ INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
 shopt -s nullglob
 recordings=("$INPUT_DIR"/*.mkv "$INPUT_DIR"/*.mp4)
 shopt -u nullglob
-
-CARD_INBOX="${CARD_INBOX:-$HOME/Desktop/P4next-takes}"
-if [ "${#recordings[@]}" -gt 0 ] && [ -d "$CARD_INBOX" ]; then
-    ( cd "$REPO_DIR" && python3 -m casting_call.card copy "$INPUT_DIR" --inbox "$CARD_INBOX" )
-fi
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 get_duration() {
@@ -407,7 +403,12 @@ for input_file in "${recordings[@]}"; do
     # or transcribes them. Skipped entirely without a card take.
     card_cues=""; card_filled_caller=""
     rm -f "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled"
-    if [ -d "$rec_dir/card" ]; then
+    card_note=$( cd "$REPO_DIR" && python3 -m casting_call.card find "$rec_dir" --video "$input_file" )
+    card_found=$?
+    if [ "$card_found" -ne 0 ] && [ -n "$card_note" ]; then
+        echo "  ⚠  $card_note"
+    fi
+    if [ "$card_found" -eq 0 ]; then
         echo "  → Card take found; lining it up and checking OBS for dropouts..."
         mk_arg=()
         [ -n "$mk_s" ] && mk_arg=(--markers "$tmp_mk")

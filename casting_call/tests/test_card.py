@@ -37,10 +37,10 @@ def test_classify_reads_split_parts_and_rejects_strangers():
     assert card.classify(f"{TAKE}_LINE.wav") is None
 
 
-def test_find_card_take_on_the_fixture(tmp_path):
+def test_read_take_dir_on_the_fixture(tmp_path):
     shutil.copytree(FIX / "card", tmp_path / "card")
     (tmp_path / "card" / "readme.txt").write_text("x")
-    take = card.find_card_take(tmp_path)
+    take = card.read_take_dir(tmp_path / "card")
     assert take.take == TAKE
     assert set(take.roles) == {"mix", "mic", "usb", "pads"}
     assert [p.name for p in take.ignored] == [f"{TAKE}_MIC2.wav"]
@@ -48,9 +48,10 @@ def test_find_card_take_on_the_fixture(tmp_path):
 
 
 def test_no_card_folder_means_no_take(tmp_path):
-    assert card.find_card_take(tmp_path) is None
-    (tmp_path / "card").mkdir()
-    assert card.find_card_take(tmp_path) is None
+    (tmp_path / "call.mkv").write_bytes(b"")
+    assert card.find_card_take(tmp_path / "call", tmp_path / "call.mkv") is None
+    (tmp_path / "call.card").mkdir()
+    assert card.find_card_take(tmp_path / "call", tmp_path / "call.mkv") is None
 
 
 # ── bext and cue ─────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ def test_split_parts_join_in_order(tmp_path):
     d.mkdir()
     _write_wav(d / f"{TAKE}_USB.wav", 8000)
     _write_wav(d / f"{TAKE}_USB_02.wav", 4000)
-    take = card.find_card_take(tmp_path)
+    take = card.read_take_dir(d)
     assert [p.name for p in take.roles["usb"]] == [f"{TAKE}_USB.wav", f"{TAKE}_USB_02.wav"]
     joined = card.join_parts(take.roles["usb"], tmp_path / "usb.wav")
     with wave.open(str(joined)) as w:
@@ -122,17 +123,7 @@ def test_input_args_single_file_and_concat(tmp_path):
     assert (tmp_path / "l.txt").read_text().count("file '") == 2
 
 
-# ── copying off the card ─────────────────────────────────────────────────────
-
-def test_match_takes_allows_a_slow_card_clock():
-    recs = [("2026-11-14 22-07-21", dt.datetime(2026, 11, 14, 22, 7, 21), 142.0),
-            ("2026-11-14 23-00-00", dt.datetime(2026, 11, 14, 23, 0, 0), 600.0)]
-    takes = {TAKE: dt.datetime(2026, 11, 14, 22, 6, 57),
-             "261114_120000": dt.datetime(2026, 11, 14, 12, 0, 0)}
-    matched, left = card.match_takes(recs, takes)
-    assert matched == {TAKE: "2026-11-14 22-07-21"}
-    assert left == ["261114_120000"]
-
+# ── pairing a take with a recording ──────────────────────────────────────────
 
 def test_card_takes_reads_card_and_inbox_layouts(tmp_path):
     vol = tmp_path / "P4NEXT_SD"
@@ -149,27 +140,60 @@ def test_card_takes_reads_card_and_inbox_layouts(tmp_path):
             [f"{TAKE}.wav", f"{TAKE}_USB.wav"]
 
 
-def test_copy_takes_links_inbox_takes_into_the_recording(tmp_path):
-    inbox = tmp_path / "inbox"
-    shutil.copytree(FIX / "card", inbox / TAKE)
-    day = tmp_path / "day"
-    day.mkdir()
-    # bext says 22:08:21, so a recording named 22:08:45 owns it.
-    (day / "2026-11-14 22-08-45.mkv").write_bytes(b"")
-    (day / "2026-11-14 18-00-00.mkv").write_bytes(b"")
-    lines = []
-    matched = card.copy_takes(day, inbox, out=lines.append)
-    assert matched == {TAKE: "2026-11-14 22-08-45"}
-    got = sorted(p.name for p in (day / "2026-11-14 22-08-45" / "card").iterdir())
-    assert got == sorted(p.name for p in (FIX / "card").iterdir())
-    assert not (day / "2026-11-14 18-00-00").exists()
-    assert len(list((inbox / TAKE).iterdir())) == 5      # inbox untouched
-    lines.clear()
-    card.copy_takes(day, inbox, out=lines.append)
-    assert "0 file(s) linked or copied" in lines[0]
+def _set_birth(path, when):
+    # On APFS, an mtime earlier than the birth time moves the birth time back.
+    ts = when.timestamp()
+    import os
+    os.utime(path, (ts, ts))
 
 
-def test_copy_takes_without_an_inbox_does_nothing(tmp_path):
-    (tmp_path / "2026-11-14 22-08-45.mkv").write_bytes(b"")
-    assert card.copy_takes(tmp_path, tmp_path / "missing") == {}
-    assert not (tmp_path / "2026-11-14 22-08-45").exists()
+def test_rule_1_renamed_card_folder_next_to_the_recording(tmp_path):
+    shutil.copytree(FIX / "card", tmp_path / "2026-11-14-test.card")
+    (tmp_path / "2026-11-14-test.mkv").write_bytes(b"")
+    take, note = card.lookup_card_take(tmp_path / "2026-11-14-test")
+    assert take.take == TAKE and take.folder.name == "2026-11-14-test.card"
+    assert "2026-11-14-test.card/" in note
+
+
+def test_rule_2_unrenamed_take_paired_by_birth_time(tmp_path):
+    shutil.copytree(FIX / "card", tmp_path / TAKE)
+    video = tmp_path / "2026-11-14-test.mkv"
+    video.write_bytes(b"")
+    # bext start is 22:08:21; the recording was born 24 s later.
+    _set_birth(video, dt.datetime(2026, 11, 14, 22, 8, 45))
+    if card.video_birth(video) != dt.datetime(2026, 11, 14, 22, 8, 45):
+        pytest.skip("file system does not let tests set a birth time")
+    take, note = card.lookup_card_take(tmp_path / "2026-11-14-test", video)
+    assert take.take == TAKE
+    assert "24 s before the recording" in note
+
+
+def test_rule_2_refuses_a_take_more_than_10_minutes_away(tmp_path):
+    shutil.copytree(FIX / "card", tmp_path / TAKE)
+    video = tmp_path / "2026-11-14-test.mkv"
+    video.write_bytes(b"")
+    _set_birth(video, dt.datetime(2026, 11, 14, 22, 30, 0))
+    if card.video_birth(video) != dt.datetime(2026, 11, 14, 22, 30, 0):
+        pytest.skip("file system does not let tests set a birth time")
+    take, note = card.lookup_card_take(tmp_path / "2026-11-14-test", video)
+    assert take is None
+    assert "not paired" in note and "2026-11-14-test.card/" in note
+
+
+def test_rule_1_wins_over_an_unrenamed_take(tmp_path):
+    shutil.copytree(FIX / "card", tmp_path / "call.card")
+    other = tmp_path / "261114_230000"
+    other.mkdir()
+    shutil.copy(FIX / "card" / f"{TAKE}_USB.wav", other / "261114_230000_USB.wav")
+    (tmp_path / "call.mkv").write_bytes(b"")
+    take, _n = card.lookup_card_take(tmp_path / "call", tmp_path / "call.mkv")
+    assert take.folder.name == "call.card"
+
+
+def test_find_cli_exit_codes(tmp_path, capsys):
+    (tmp_path / "call.mkv").write_bytes(b"")
+    assert card.main(["find", str(tmp_path / "call"), "--video", str(tmp_path / "call.mkv")]) == 1
+    shutil.copytree(FIX / "card", tmp_path / "call.card")
+    assert card.main(["find", str(tmp_path / "call")]) == 0
+    assert card.main(["input-args", str(tmp_path / "call"), "mix"]) == 0
+    assert capsys.readouterr().out.strip().endswith(f"{TAKE}.wav")

@@ -206,6 +206,13 @@ ffmpeg -loglevel error -i /tmp/_m.aiff -ar 48000 -ac 2 -c:a pcm_s24le \
   -af "apad=pad_dur=0.25" obs/marker-clips/MARKER.WAV -y
 rm -f /tmp/_m.aiff
 
+# Short names for the three commands you run after every call
+cat >> ~/.zshrc <<'ALIASES'
+alias ripcard="bash ~/Developer/casting-call/bin/pull_card.sh"
+alias ripa="bash ~/Developer/casting-call/bin/extract_audio_stereo.sh"
+alias ripv="bash ~/Developer/casting-call/bin/convert_video.sh"
+ALIASES
+
 # Confirm the toolchain is sane
 python3 -m pytest -q</code></pre>
 
@@ -259,7 +266,7 @@ everywhere, card included.
 
 <ol>
 <li>On the P4next, open <strong>Menu, USB File Transfer</strong> so the card mounts on the Mac as
-<code>/Volumes/P4NEXT_SD</code>. Copy <code>obs/marker-clips/MARKER.WAV</code> into the card's
+<code>/Volumes/P4NEXT_SD</code> (the same mode <code>ripcard</code> uses after every call). Copy <code>obs/marker-clips/MARKER.WAV</code> into the card's
 <code>P4next_SoundPad</code> folder, then eject and leave USB File Transfer.</li>
 <li><strong>Menu, Sound Pad, A, Sound Assign</strong>: pick <code>MARKER.WAV</code>.
 <strong>Play Mode</strong>: One-Shot.</li>
@@ -321,8 +328,10 @@ test recording with <code>ffprobe recording.mkv</code> and count four audio stre
 <strong>pad A once</strong>. Talk for a few seconds, play a few seconds of any video on the Mac,
 press pad A again, and stop both.</li>
 <li>Move the <code>.mkv</code> into a folder, say <code>~/calls/test/</code>. On the P4next open
-<strong>USB File Transfer</strong> so the card mounts; <code>ripa</code> copies the matching card
-take into <code>&lt;name&gt;/card/</code> on its own.</li>
+<strong>Menu, USB File Transfer</strong>, run <code>ripcard</code>, and leave File Transfer as
+soon as it prints <code>Card ejected. Exit USB File Transfer on the P4next now.</code> The take
+is now in <code>~/Desktop/P4next-takes/&lt;take&gt;/</code>. Move that take folder into
+<code>~/calls/test/</code> next to the <code>.mkv</code>.</li>
 <li>Confirm the file really has four audio tracks:
 <pre><code>ffprobe -v error -show_entries stream=index,codec_type -of csv ~/calls/test/*.mkv
 # expect one 'video' line and four 'audio' lines</code></pre>
@@ -345,15 +354,32 @@ is done.</p>
 <li>Start recording in OBS and on the P4next, then <strong>press pad A once</strong> right away.
 That first press is what lines the card up with the video to the millisecond. Press it again during
 the call whenever something matters.</li>
-<li>Stop both. Drop the <code>.mkv</code> in a folder. Mount the card with <strong>USB File
-Transfer</strong> before the next step if you want the backup. Nothing is ever deleted from the
-card.</li>
-<li><code>bash bin/extract_audio_stereo.sh &lt;folder&gt;</code>. That is the transcript, markers and all,
+<li>Stop both recorders. Drop the <code>.mkv</code> in a folder.</li>
+<li>On the P4next open <strong>Menu, USB File Transfer</strong> and run <code>ripcard</code>. It
+copies every take not already pulled into <code>~/Desktop/P4next-takes/&lt;take&gt;/</code>
+(<code>CARD_INBOX</code> moves it), ejects the card, and prints
+<code>Card ejected. Exit USB File Transfer on the P4next now.</code> Do that right away: while
+File Transfer is on, the P4next is not the Mac's audio device and you hear nothing from the
+computer. Nothing on the card is ever deleted or changed, and the unused MIC2 to MIC4 files stay
+on the card (<code>PULL_ALL_INPUTS=1</code> copies them too).</li>
+<li>Move the recordings that matter into their day folder,
+<code>~/Desktop/call_logs/&lt;yyyy-wNN&gt;/&lt;yyyy-mm-dd&gt;/</code>, and rename each <code>.mkv</code>
+to something you will recognize, say <code>2026-11-10-corey-sync.mkv</code>. Move its take folder
+out of <code>~/Desktop/P4next-takes/</code> into the same day folder and rename it to match:
+<code>2026-11-10-corey-sync.card/</code>. Leave the files inside with their P4next names. A take
+folder you forget to rename still works: <code>ripa</code> pairs an unrenamed
+<code>yymmdd_hhmmss/</code> folder with the recording that started closest to it, says how far apart
+the two starts were, and refuses past 10 minutes. Use <code>mv</code> (or a Finder move on the same
+disk) for the <code>.mkv</code>, which keeps the creation time that pairing reads.</li>
+<li><code>ripa &lt;day folder&gt;</code>, whenever you like. It reads each take where it sits and
+never moves it, and never reads the card or the <code>P4next-takes</code> inbox, which is only a
+staging area. That is the transcript, markers and all,
 ready to hand to an LLM, plus a health line per track saying whether OBS dropped anything and
 whether the card covered it.</li>
 <li>Optional, only when you want to watch it back:
-<code>bash bin/convert_video.sh &lt;folder&gt;</code> renders a playable <code>.mp4</code>. With a card
-take its soundtrack is the card's stereo mix, lined up to the video; without one it is OBS Track 1.</li>
+<code>ripv &lt;folder&gt;</code> renders a playable <code>.mp4</code>. With a card take its soundtrack
+is the card's stereo mix, lined up to the video; without one it is OBS Track 1. An
+<code>.mp4</code> rendered before <code>ripa</code> lined the card up is rendered again.</li>
 <li>Optional, to put real names on the far-side lines:
 <code>bash bin/extract_speakers.sh &lt;recording&gt; --region x,y,w,h --transcript &lt;transcript&gt;</code>.</li>
 </ol>

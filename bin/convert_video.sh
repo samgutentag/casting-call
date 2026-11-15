@@ -2,10 +2,17 @@
 
 # OPTIONAL: render a smaller, playable .mp4 from a multi-track recording.
 #
-# Audio is the master mix (Track 1) on recordings from the four-track rig
-# (2026-10-08 on): what you actually heard, stereo as OBS recorded it. Older
-# recordings have no master, so their two voice tracks are folded into one
-# stereo track instead: you = left, caller = right.
+# Audio, first one available:
+#   1. The P4next card's stereo mix, when a card take sits next to the
+#      recording (<name>.card/, or an unrenamed take folder paired by start
+#      time) and ripa lined it up (<name>/align.json, usable). Both sides at
+#      the levels set on the P4next, shifted onto the video timeline.
+#   2. The master mix (Track 1) on four-track files (2026-10-08 on, including
+#      the P4next "Call P4" scene).
+#   3. Older two- and three-track files: you = left, caller = right.
+#
+# A .mp4 older than its align.json is rendered again, so running ripa after
+# ripv still gets the card soundtrack.
 #
 # The pipeline does NOT need this (transcription reads the .mkv directly). It is
 # purely for watching a call back, or eyeballing captions. The .mkv stays the
@@ -23,6 +30,12 @@
 # Usage: convert_video.sh [directory]
 
 INPUT_DIR="${1:-.}"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Absolute, because the card lookups below run from inside REPO_DIR.
+if [ ! -d "$INPUT_DIR" ]; then
+    echo "Error: directory not found: $INPUT_DIR"; exit 1
+fi
+INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
 
 shopt -s nullglob
 recordings=("$INPUT_DIR"/*.mkv "$INPUT_DIR"/*.mp4)
@@ -32,7 +45,7 @@ total=${#recordings[@]}
 current=0
 
 echo "Found $total recording(s) to render"
-echo "Audio: master mix (Track 1) on 4-track files, else L=you (0:a:0) R=caller (0:a:1)"
+echo "Audio: card stereo mix if lined up, else master mix (Track 1) on 4-track files, else L=you R=caller"
 echo "--------------------------"
 
 for input_file in "${recordings[@]}"; do
@@ -43,7 +56,11 @@ for input_file in "${recordings[@]}"; do
 
     echo "[$current/$total] $filename"
     if [ -f "$out" ]; then
-        echo "  ⏭  already rendered, skipping"; continue
+        if [ -f "$rec_dir/align.json" ] && [ "$rec_dir/align.json" -nt "$out" ]; then
+            echo "  ↻  align.json is newer than the .mp4, rendering again"
+        else
+            echo "  ⏭  already rendered, skipping"; continue
+        fi
     fi
     mkdir -p "$rec_dir"
 
@@ -53,25 +70,49 @@ for input_file in "${recordings[@]}"; do
     # +faststart moves the moov atom up for instant playback.
     n_tracks=$(ffprobe -v error -select_streams a -show_entries stream=index \
         -of csv=p=0 "$input_file" 2>/dev/null | grep -c .)
-    if [ "${n_tracks:-0}" -ge 4 ]; then
-        audio=(-map 0:a:0)
+    card_in=(); extra_in=(); offset=""
+    offset=$( cd "$REPO_DIR" && python3 -m casting_call.align offset "$rec_dir" 2>/dev/null )
+    if [ -n "$offset" ]; then
+        while IFS= read -r arg; do card_in+=("$arg"); done < <(
+            cd "$REPO_DIR" && python3 -m casting_call.card input-args "$rec_dir" mix \
+                --video "$input_file" )
+    fi
+    if [ "${#card_in[@]}" -gt 0 ]; then
+        # card time = video time + offset: skip that much of the card, or delay
+        # it when the card started after OBS. apad + -shortest ends it with the video.
+        if awk -v o="$offset" 'BEGIN{exit !(o >= 0)}'; then
+            card_in=(-ss "$offset" "${card_in[@]}"); afilt="apad"
+        else
+            afilt="adelay=$(awk -v o="$offset" 'BEGIN{printf "%d", -o*1000}'):all=1,apad"
+        fi
+        extra_in=("${card_in[@]}")
+        audio=(-filter_complex "[1:a:0]${afilt}[a]" -map "[a]" -shortest)
+        source="card stereo mix (offset ${offset} s)"
+    elif [ "${n_tracks:-0}" -ge 4 ]; then
+        audio=(-map 0:a:0); source="OBS Track 1 (master mix)"
     elif [ "${n_tracks:-0}" -ge 2 ]; then
         audio=(-filter_complex "[0:a:0]aformat=channel_layouts=mono[l];[0:a:1]aformat=channel_layouts=mono[r];[l][r]join=inputs=2:channel_layout=stereo[a]" -map "[a]")
+        source="legacy fold: you left, caller right"
     else
-        audio=(-map "0:a:0?")
+        audio=(-map "0:a:0?"); source="OBS Track 1"
     fi
-    ffmpeg -i "$input_file" \
+    echo "  → Audio: $source"
+    # Render beside the old file and swap on success, so a failed re-render
+    # never costs the .mp4 that was already there.
+    tmp_out="$rec_dir/.${filename}.rendering.mp4"
+    ffmpeg -i "$input_file" "${extra_in[@]}" \
         -map 0:v:0 "${audio[@]}" \
         -c:v libx265 -crf 24 -preset medium -tag:v hvc1 \
         -c:a aac -b:a 160k \
         -movflags +faststart \
-        "$out" -y -loglevel error
+        "$tmp_out" -y -loglevel error
 
-    if [ -f "$out" ]; then
+    if [ $? -eq 0 ] && [ -s "$tmp_out" ] && mv -f "$tmp_out" "$out"; then
         in_size=$(du -h "$input_file" | cut -f1)
         out_size=$(du -h "$out" | cut -f1)
         echo "  ✓ Rendered → $out  ($in_size → $out_size)"
     else
+        rm -f "$tmp_out"
         echo "  ✗ ffmpeg failed for $filename" >&2
     fi
 done

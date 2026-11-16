@@ -47,6 +47,11 @@ PAD = 1.0             # seconds either side of a line that still count as its wo
 MAX_LINE = 12         # a line with no next line still ends this many seconds on
 MIN_VOTES = 5         # caption words a line needs before a vote means anything
 MAJORITY = 0.7        # share of those words one name needs to win the line
+# With Deepgram diarization, a whole speaker is named at once, so the bar is
+# higher: one wrong call renames every line that voice spoke.
+SPEAKER_MIN_VOTES = 20
+SPEAKER_MAJORITY = 0.8
+ORDINALS = ['second', 'third', 'fourth', 'fifth']
 
 
 # --- labels -> people -------------------------------------------------------
@@ -203,6 +208,80 @@ def name_lines(entries, words, people, caller_label=CALLER_LABEL):
     return out, records
 
 
+def load_speakers(path):
+    """{whole-second t: Deepgram speaker} from parts/caller.speakers.json, or {}."""
+    try:
+        rows = json.loads(Path(path).read_text(encoding='utf-8'))
+        return {int(r['t']): (r['speaker'], float(r['start']), float(r['end'])) for r in rows}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def name_speakers(speakers, words, people):
+    """Name each Deepgram speaker from the caption words over all its lines.
+
+    Returns ({speaker: label or None}, {speaker: summary}). When two speakers
+    win the same caption name, the one that talked most keeps it and the other
+    becomes "<name> (second voice)": a demo, a shared room, or a person
+    Deepgram split in two, all of which Meet captions under one participant.
+    """
+    votes, talk = defaultdict(Counter), Counter()
+    for spk, start, end in speakers.values():
+        votes[spk].update(vote(words, start, end))
+        talk[spk] += end - start
+    single = people[0] if len(people) == 1 else None
+    won = {}
+    for spk in sorted(talk):
+        total = sum(votes[spk].values())
+        top = votes[spk].most_common(1)
+        if top and total >= SPEAKER_MIN_VOTES and top[0][1] / total >= SPEAKER_MAJORITY:
+            won[spk] = top[0][0]
+        elif single:
+            won[spk] = single
+    labels = {spk: None for spk in talk}
+    for name in set(won.values()):
+        holders = sorted((s for s in won if won[s] == name), key=lambda s: -talk[s])
+        labels[holders[0]] = name
+        for n, spk in enumerate(holders[1:]):
+            labels[spk] = f'{name} ({ORDINALS[min(n, len(ORDINALS) - 1)]} voice)'
+    summary = {}
+    for spk in sorted(talk):
+        total = sum(votes[spk].values())
+        summary[str(spk)] = {
+            'label': labels[spk], 'talk_seconds': round(talk[spk]),
+            'caption_words': total,
+            'votes': {k: round(v / total, 3) for k, v in votes[spk].most_common()} if total else {},
+        }
+    return labels, summary
+
+
+def name_lines_by_speaker(entries, words, people, speakers, caller_label=CALLER_LABEL):
+    """Relabel caller lines by their Deepgram speaker. Lines with no speaker
+    (spliced in from captions, for one) fall back to the per-line vote."""
+    labels, summary = name_speakers(speakers, words, people)
+    spans = iter(line_spans(entries, caller_label))
+    single = people[0] if len(people) == 1 else None
+    out, records = [], []
+    for e in entries:
+        if e['label'] != caller_label:
+            out.append(e)
+            continue
+        start, end = next(spans)
+        hit = speakers.get(e['t'])
+        if hit is not None:
+            spk = hit[0]
+            name = labels.get(spk)
+            votes = vote(words, hit[1], hit[2])
+        else:
+            spk = None
+            votes = vote(words, start, end)
+            name = single or pick(votes)
+        records.append({'t': e['t'], 'end': end, 'speaker': spk,
+                        'votes': dict(votes.most_common()), 'name': name, 'text': e['text']})
+        out.append(dict(e, label=name) if name else e)
+    return out, records, summary
+
+
 # --- CLI --------------------------------------------------------------------
 
 def _hms(sec):
@@ -277,7 +356,13 @@ def main(argv=None):
               f'far-side caption names, lines stay [{args.caller_label}]')
         return 0
     words = caption_words(frames, canon, people)
-    named, records = name_lines(entries, words, people, args.caller_label)
+    speakers = load_speakers(parts / 'caller.speakers.json')
+    speaker_summary = None
+    if speakers:
+        named, records, speaker_summary = name_lines_by_speaker(
+            entries, words, people, speakers, args.caller_label)
+    else:
+        named, records = name_lines(entries, words, people, args.caller_label)
 
     parts.mkdir(parents=True, exist_ok=True)
     if not pre.exists():
@@ -285,6 +370,8 @@ def main(argv=None):
     renamed = Counter(r['name'] for r in records if r['name'])
     (parts / 'speaker-names.json').write_text(json.dumps({
         'names': {p: {'lines': renamed.get(p, 0), 'spellings': spellings[p]} for p in people},
+        'by': 'deepgram speaker' if speakers else 'line',
+        'speakers': speaker_summary,
         'single_name_call': len(people) == 1,
         'frames': len(frames), 'frames_with_meet': anchored,
         'lines': [dict(r, tstr=_hms(r['t'])) for r in records],
@@ -299,6 +386,10 @@ def main(argv=None):
     print(f'caption names: {", ".join(people)}{how}')
     print(f'  renamed {sum(renamed.values())}/{n_caller} [{args.caller_label}] lines: '
           + ', '.join(f'{p} {n}' for p, n in renamed.most_common()))
+    if speaker_summary:
+        for spk, s in speaker_summary.items():
+            print(f'  Deepgram speaker {spk}: {s["label"] or args.caller_label} '
+                  f'({s["talk_seconds"] // 60} min, {s["caption_words"]} caption words)')
     print(f'  left as [{args.caller_label}]: {left}  '
           f'({len(frames)} frames, {anchored} with Meet, {time.time() - began:.0f}s)')
     return 0

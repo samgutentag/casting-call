@@ -84,6 +84,13 @@ CAPTION_NAMES="${CAPTION_NAMES:-1}"
 
 MARKER_MODE="${MARKER_MODE:-auto}"
 
+# Transcriber. Deepgram (nova-3, mip_opt_out=true on every request) when a
+# DEEPGRAM_API_KEY is in the environment or .env; whisper otherwise, and for
+# any track where the Deepgram request fails. TRANSCRIBER=whisper keeps the
+# whole run on this Mac. The far side is diarized so caption naming can name
+# each Deepgram speaker instead of each line.
+TRANSCRIBER="${TRANSCRIBER:-deepgram}"
+
 WHISPER_BIN="whisper-cli"
 WHISPER_METAL_RESOURCES="$(brew --prefix whisper-cpp)/share/whisper-cpp"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -124,6 +131,19 @@ if [ ! -d "$INPUT_DIR" ]; then
     echo "Error: directory not found: $INPUT_DIR"; exit 1
 fi
 INPUT_DIR="$(cd "$INPUT_DIR" && pwd)"
+
+if [ "$TRANSCRIBER" = "deepgram" ]; then
+    if ( cd "$REPO_DIR" && python3 -m casting_call.deepgram has-key ); then
+        echo "Transcriber: Deepgram nova-3 (mip_opt_out=true), whisper as the fallback"
+    else
+        echo "⚠  No DEEPGRAM_API_KEY found; transcribing with whisper on this Mac."
+        TRANSCRIBER="whisper"
+    fi
+elif [ "$TRANSCRIBER" != "whisper" ]; then
+    echo "Error: TRANSCRIBER must be deepgram or whisper (got: $TRANSCRIBER)"; exit 1
+else
+    echo "Transcriber: whisper on this Mac (TRANSCRIBER=whisper)"
+fi
 
 shopt -s nullglob
 recordings=("$INPUT_DIR"/*.mkv "$INPUT_DIR"/*.mp4)
@@ -316,6 +336,40 @@ transcribe_track() {
         | whisper_progress "$label" "$proc_dur"
 }
 
+# Transcribe one track with the chosen engine, falling back to whisper if a
+# Deepgram request fails. Appends a "# transcript <track>: <engine>" header line.
+transcribe_any() {
+    local wav="$1" srt_base="$2" label="$3" spans="$4" track="$5" diarize="$6"
+    local dur frac out status
+    dur=$(get_duration "$wav")
+    frac=$(silent_fraction "$spans" "${dur:-0}")
+    if awk -v f="$frac" 'BEGIN{exit !(f >= 0.95)}'; then
+        echo "  ⏭  ${label} track is essentially silent, skipping transcription"
+        : > "${srt_base}.srt"
+        echo "# transcript ${track}: none (track silent)" >> "$tmp_engine_header"
+        return
+    fi
+    if [ "$TRANSCRIBER" = "deepgram" ]; then
+        local dg_args=(--srt "${srt_base}.srt" --raw "$parts_dir/${track}.deepgram.json")
+        [ "$diarize" = "1" ] && dg_args+=(--diarize --speakers "$parts_dir/${track}.speakers.json")
+        echo "  → ${label}: sending to Deepgram..."
+        out=$( cd "$REPO_DIR" && python3 -m casting_call.deepgram transcribe "$wav" "${dg_args[@]}" )
+        status=$?
+        if [ "$status" -eq 0 ]; then
+            echo "  ✓ ${label}: Deepgram, $out"
+            local note="Deepgram nova-3 (mip_opt_out)"
+            [ "$diarize" = "1" ] && note+=", diarized"
+            echo "# transcript ${track}: $note" >> "$tmp_engine_header"
+            return
+        fi
+        echo "  ⚠⚠ ${label}: Deepgram failed (${out:-status $status}); transcribing with whisper instead"
+        echo "# transcript ${track}: whisper (Deepgram failed: ${out:-status $status})" >> "$tmp_engine_header"
+    else
+        echo "# transcript ${track}: whisper" >> "$tmp_engine_header"
+    fi
+    transcribe_track "$wav" "$srt_base" "$label" "$spans"
+}
+
 # ── run ──────────────────────────────────────────────────────────────────────
 total=${#recordings[@]}
 echo "Found $total recording(s) (.mkv/.mp4)"
@@ -342,6 +396,9 @@ for input_file in "${recordings[@]}"; do
     tmp_card_header="/tmp/whisper_${filename}_card_header.txt"
     tmp_card_cues="/tmp/whisper_${filename}_card_cues.txt"
     tmp_card_filled="/tmp/whisper_${filename}_card_filled.txt"
+    tmp_engine_header="/tmp/whisper_${filename}_engine_header.txt"
+    : > "$tmp_engine_header"
+    rm -f "$parts_dir/caller.speakers.json"
 
     echo "[$current/$total] $filename"
 
@@ -445,8 +502,8 @@ for input_file in "${recordings[@]}"; do
     fi
 
     # Transcribe each track (dead tracks are skipped inside transcribe_track).
-    transcribe_track "$tmp_you" "/tmp/whisper_${filename}_you" "$YOU_LABEL" "$spans_you"
-    transcribe_track "$tmp_caller" "/tmp/whisper_${filename}_caller" "$CALLER_LABEL" "$spans_caller"
+    transcribe_any "$tmp_you" "/tmp/whisper_${filename}_you" "$YOU_LABEL" "$spans_you" you 0
+    transcribe_any "$tmp_caller" "/tmp/whisper_${filename}_caller" "$CALLER_LABEL" "$spans_caller" caller 1
 
     # Weave.
     echo "  → Merging transcripts..."
@@ -572,12 +629,13 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 
     # Header naming each track's source and the card alignment. Last, because
     # every step above rewrites the transcript from its timestamped lines only.
-    if [ -s "$tmp_card_header" ]; then
-        cat "$tmp_card_header" "$txt_out" > "$txt_out.tmp" && mv "$txt_out.tmp" "$txt_out"
+    if [ -s "$tmp_card_header" ] || [ -s "$tmp_engine_header" ]; then
+        cat "$tmp_engine_header" "$tmp_card_header" "$txt_out" 2>/dev/null > "$txt_out.tmp" \
+            && mv "$txt_out.tmp" "$txt_out"
     fi
 
     rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller" \
-        "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled"
+        "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled" "$tmp_engine_header"
 done
 
 echo ""

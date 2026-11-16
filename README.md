@@ -17,11 +17,15 @@ constant, and has animated diagrams of the three core mechanisms.
 
 ## The three capabilities
 
-**1. Transcribe** (`ripa`). Separate the audio tracks, run whisper-cpp on each, merge
-by timestamp into `[h:mm:ss] [You] / [Caller]` lines. Every remote participant lands on
-the far-side track as one undifferentiated `Caller`. When the recording has video of a
-Meet call, `ripa` then reads Meet's caption speaker names (no roster) and renames each
-`Caller` line whose caption words clearly belong to one person, e.g. `[Corey Weathers]`.
+**1. Transcribe** (`ripa`). Separate the audio tracks, transcribe each with Deepgram
+nova-3 (whisper-cpp on this Mac when there is no key or a request fails), and merge by
+timestamp into `[h:mm:ss] [You] / [Caller]` lines. The far side is diarized, so Deepgram
+splits it into speakers. When the recording has video of a Meet call, `ripa` then reads
+Meet's caption speaker names (no roster) and names each Deepgram speaker whose caption
+words clearly belong to one person, e.g. `[Corey Weathers]`. Two voices under one Meet
+participant (a voice demo, a shared room) come out as `[Ed Charbeneau (second voice)]`.
+The transcript's `# transcript you:` / `# transcript caller:` header lines say which
+engine ran for each track.
 Unsure lines stay `Caller`. The unnamed transcript is kept in `parts/pre-names.txt`, the
 names and every line's votes in `parts/speaker-names.json`. Any label other than `You`
 or `MARKER` is the far side.
@@ -131,7 +135,10 @@ brew install tesseract ffmpeg whisper-cpp
 pip install --break-system-packages pillow numpy pytesseract pytest
 ```
 
-Whisper model (`ripa` defaults to `ggml-large-v3.bin`; the error message tells you
+Deepgram key: put `DEEPGRAM_API_KEY=...` in `.env` at the repo root (gitignored), or
+export it. Without one, `ripa` uses whisper.
+
+Whisper model, the fallback (`ripa` defaults to `ggml-large-v3.bin`; the error message tells you
 which to fetch if it is missing):
 
 ```bash
@@ -168,5 +175,7 @@ docs/user-guide.html   the real documentation; start there
 docs/setup-guide.html  building the OBS + Stream Deck rig on a new machine
 ```
 
-Everything runs locally. No accounts, no uploads, and anything the tool cannot
-confidently attribute stays labeled `Caller` rather than being guessed.
+Transcription uploads each track to Deepgram, every request with `mip_opt_out=true` so
+the audio stays out of Deepgram's Model Improvement Program. `TRANSCRIBER=whisper ripa`
+keeps the whole run on this Mac. Everything else runs locally, and anything the tool
+cannot confidently attribute stays labeled `Caller` rather than being guessed.

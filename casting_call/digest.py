@@ -34,7 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from casting_call.asides import asides_from_entries
+from casting_call.asides import SELF_LABEL, asides_from_entries
 from casting_call.frames import load_manifest
 from casting_call.markers import MARK_LABEL, MARKER_TYPES, SINGLE_TYPE
 from casting_call.transcript import is_far_side, parse_transcript
@@ -225,6 +225,19 @@ def pair_asides(markers, asides, window=PAIR_WINDOW):
     return markers, [a for n, a in enumerate(asides) if n not in taken]
 
 
+def speakers_of(speech, self_label=SELF_LABEL):
+    """Distinct far-side labels in first-heard order.
+
+    Any label that is not Sam's own counts as the far side: `Caller` when no name
+    was captured, or a real name once Meet captions supply one.
+    """
+    seen = []
+    for e in speech:
+        if e["label"] != self_label and e["label"] not in seen:
+            seen.append(e["label"])
+    return seen
+
+
 def rollup(items):
     """Everything actionable, flattened across section boundaries.
 
@@ -316,6 +329,8 @@ def build_digest_from_entries(entries, window_seconds=30, video_path=None,
         "groups": groups,
         "counts": {t: len(v) for t, v in by_type.items()},
         "total": len(markers),
+        "far_side": speakers_of(speech),
+        "duration": call_end - call_start,
         "aside_total": len(asides),
         "aside_paired": len(asides) - len(unpaired),
     }

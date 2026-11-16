@@ -226,6 +226,18 @@ step_done() {
     printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$secs" "${4:-}" >> "$steps_tsv"
 }
 
+# step_start <name>: "[x of y] name" for each recording's main steps, so a long
+# run shows where it is.
+STEPS_TOTAL=6
+step_start() {
+    step_no=$((step_no + 1))
+    if [ "$USE_GUM" = "1" ]; then
+        gum style --bold --foreground "#E69F00" "  [$step_no of $STEPS_TOTAL] $1"
+    else
+        echo "  [$step_no of $STEPS_TOTAL] $1"
+    fi
+}
+
 # A recording's header line: styled with gum when it is there.
 ui_title() {
     if [ "$USE_GUM" = "1" ]; then
@@ -474,7 +486,7 @@ transcribe_both_deepgram() {
 run_began=$(now)
 total=${#recordings[@]}
 echo "Found $total recording(s) (.mkv/.mp4)"
-echo "Model: $WHISPER_MODEL"
+[ "$TRANSCRIBER" = "whisper" ] && echo "Model: $WHISPER_MODEL"
 echo "Layout: 4 tracks = master, [${YOU_LABEL}], [${CALLER_LABEL}], markers | 3 tracks = [${YOU_LABEL}], [${CALLER_LABEL}], markers"
 echo ""
 if [ "$total" -eq 0 ]; then
@@ -554,6 +566,8 @@ for input_file in "${recordings[@]}"; do
     # markers track is left raw. The combined mono MP3 is the master track when the
     # rig recorded one, else an amix of the separate tracks; either way it is
     # loudnorm'd so it sits at a sane level.
+    step_no=0
+    step_start "Extract tracks"
     step_began=$(now)
     LN="loudnorm=I=-16:TP=-1.5:LRA=11"
     # With a master track the per-track mix branch (x) is not needed.
@@ -595,6 +609,7 @@ for input_file in "${recordings[@]}"; do
     if [ "$card_found" -ne 0 ] && [ -n "$card_note" ]; then
         echo "  ⚠  $card_note"
     fi
+    step_start "Card take"
     step_began=$(now)
     if [ "$card_found" -eq 0 ]; then
         echo "  → Card take found; lining it up and checking OBS for dropouts..."
@@ -630,6 +645,7 @@ for input_file in "${recordings[@]}"; do
 
     # Transcribe each track (dead tracks are skipped). Deepgram takes both
     # tracks at once; whisper runs them one after the other.
+    step_start "Transcribe"
     step_began=$(now)
     if [ "$TRANSCRIBER" = "deepgram" ]; then
         transcribe_both_deepgram
@@ -666,6 +682,7 @@ for input_file in "${recordings[@]}"; do
     # over each long stretch where the far side produced no lines at all, and
     # splice them in where they show someone else was talking. Runs after the
     # clean step, which has already dropped whisper's inventions on that silence.
+    step_start "Caption backup"
     step_began=$(now)
     caption_windows=$( cd "$REPO_DIR" && python3 -m casting_call.gaps "$txt_out" \
         --label "$CALLER_LABEL" --min "$CAPTION_TEXT_GAP_SECONDS" \
@@ -689,6 +706,7 @@ for input_file in "${recordings[@]}"; do
 
     # Caption names: rename [Caller] lines from Meet's caption speaker labels.
     # Never fails the run: the transcript is only rewritten once naming finishes.
+    step_start "Caption names"
     if [ "$CAPTION_NAMES" != "1" ]; then
         echo "  ⏭  Caption names off (CAPTION_NAMES=0); far side stays [${CALLER_LABEL}]"
     elif ! has_stream "$input_file" v:0; then
@@ -737,6 +755,7 @@ for input_file in "${recordings[@]}"; do
     safe_note=$( cd "$REPO_DIR" && python3 -m casting_call.obslog "$input_file" )
     [ -n "$safe_note" ] && echo "  ⚠  $safe_note"
 
+    step_start "Markers + frames"
     step_began=$(now)
     if [ -n "$mk_s" ]; then
         echo "  → Parsing markers (Track $((mk_s + 1)))..."

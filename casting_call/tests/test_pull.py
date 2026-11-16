@@ -59,9 +59,9 @@ def test_size_mismatch_leaves_no_file_behind(tmp_path, monkeypatch):
     src = FIX / f"{TAKE}_USB.wav"
     target = tmp_path / f"{TAKE}_USB.wav"
 
-    def short_copy(a, b):
+    def short_copy(a, b, progress=None):
         Path(b).write_bytes(b"x")
-    monkeypatch.setattr(pull.shutil, "copyfile", short_copy)
+    monkeypatch.setattr(pull, "_copy_with_progress", short_copy)
     try:
         pull.copy_checked(src, target)
         raise AssertionError("expected a size mismatch")
@@ -73,9 +73,9 @@ def test_size_mismatch_leaves_no_file_behind(tmp_path, monkeypatch):
 def test_failed_copy_is_counted(tmp_path, monkeypatch):
     vol = _fake_card(tmp_path / "card")
 
-    def boom(a, b):
+    def boom(a, b, progress=None):
         raise OSError("card pulled out")
-    monkeypatch.setattr(pull.shutil, "copyfile", boom)
+    monkeypatch.setattr(pull, "_copy_with_progress", boom)
     assert pull.pull_takes(vol, tmp_path / "inbox", out=lambda s: None) == 4
 
 
@@ -101,3 +101,21 @@ def test_again_ignores_the_ledger(tmp_path):
     shutil.rmtree(inbox / TAKE)
     assert pull.pull_takes(vol, inbox, out=lambda s: None, again=True) == 0
     assert (inbox / TAKE / f"{TAKE}_MIC1.wav").exists()
+
+
+def test_bar_draws_only_on_a_terminal():
+    import io
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    quiet, tty = io.StringIO(), Tty()
+    for stream in (quiet, tty):
+        bar = pull.Bar(1000, stream=stream)
+        bar.file("x_MIC1.wav")
+        bar.last = -1
+        bar.update(500)
+        bar.close()
+    assert quiet.getvalue() == ""
+    assert "50%" in tty.getvalue() and "x_MIC1.wav" in tty.getvalue()

@@ -360,6 +360,7 @@ transcribe_any() {
             local note="Deepgram nova-3 (mip_opt_out)"
             [ "$diarize" = "1" ] && note+=", diarized"
             echo "# transcript ${track}: $note" >> "$tmp_engine_header"
+            printf -v "engine_${track}" '%s' deepgram
             return
         fi
         echo "  ⚠⚠ ${label}: Deepgram failed (${out:-status $status}); transcribing with whisper instead"
@@ -398,6 +399,7 @@ for input_file in "${recordings[@]}"; do
     tmp_card_filled="/tmp/whisper_${filename}_card_filled.txt"
     tmp_engine_header="/tmp/whisper_${filename}_engine_header.txt"
     : > "$tmp_engine_header"
+    engine_you=whisper; engine_caller=whisper
     rm -f "$parts_dir/caller.speakers.json"
 
     echo "[$current/$total] $filename"
@@ -515,9 +517,15 @@ for input_file in "${recordings[@]}"; do
     merge_srt "$tmp_srt_caller" "/dev/null" "$CALLER_LABEL" "-" "$parts_dir/caller.txt" >/dev/null
 
     # Strip hallucinations: lines inside a silent span for their channel, + junk phrases.
+    # Only whisper invents speech on silence. Deepgram's word times can start a
+    # beat before the level clears the silence floor, so its lines are not
+    # checked against the spans (that dropped a real line on the 2026-11-14 test).
+    clean_you="$spans_you"; clean_caller="$spans_caller"
+    [ "$engine_you" = "deepgram" ] && clean_you=""
+    [ "$engine_caller" = "deepgram" ] && clean_caller=""
     ( cd "$REPO_DIR" && python3 -m casting_call.clean "$txt_out" \
         --you-label "$YOU_LABEL" --caller-label "$CALLER_LABEL" \
-        --silent-you "$spans_you" --silent-caller "$spans_caller" \
+        --silent-you "$clean_you" --silent-caller "$clean_caller" \
         | sed 's/^/  → /' )
 
     # Caption backup: read Meet's captions over each long far-side silence, and
@@ -629,9 +637,11 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 
     # Header naming each track's source and the card alignment. Last, because
     # every step above rewrites the transcript from its timestamped lines only.
-    if [ -s "$tmp_card_header" ] || [ -s "$tmp_engine_header" ]; then
-        cat "$tmp_engine_header" "$tmp_card_header" "$txt_out" 2>/dev/null > "$txt_out.tmp" \
-            && mv "$txt_out.tmp" "$txt_out"
+    head_files=()
+    [ -s "$tmp_engine_header" ] && head_files+=("$tmp_engine_header")
+    [ -s "$tmp_card_header" ] && head_files+=("$tmp_card_header")
+    if [ ${#head_files[@]} -gt 0 ]; then
+        cat "${head_files[@]}" "$txt_out" > "$txt_out.tmp" && mv "$txt_out.tmp" "$txt_out"
     fi
 
     rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller" \

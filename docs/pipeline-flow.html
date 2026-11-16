@@ -145,15 +145,15 @@
 <!-- ===== CONTENT START ===== -->
 <h1>casting-call: Pipeline Flow and Routable Paths</h1>
 
-<p>The whole system after the simplification pass: one recording in, every path it can take out.
-Solid arrows are the main path. Amber dashed arrows are the fallback for when the far-side audio
-drops. Round-cornered gold boxes are the artifacts you keep. Three big things changed from the
-earlier version: the affect layer is gone, the MP4 remux is no longer a required step, and markers
-now ride inside the recording instead of a sidecar file.</p>
+<p>The whole system from a finished call to the review page, and every path a recording can take.
+Solid arrows are the main path. Amber dashed arrows are fallbacks and backups. Gold-outlined boxes
+are the files you keep. Since the 2026-10-08 version: the Zoom PodTrak P4next feeds OBS and keeps
+its own card as a backup, Deepgram does the transcribing, Meet captions put real names on the far
+side, and one pad press replaces the Stream Deck keys.</p>
 
 <div class="diagram-wrap">
-<svg class="flow" viewBox="0 0 960 840" role="img"
-     aria-label="Flow diagram of the casting-call pipeline: OBS records an MKV with a master mix, two voice tracks, and a marker track, tracks are extracted and silence-checked before transcription, woven into a transcript, cleaned of hallucinations, and annotated with inline Track-4 markers, with a caption-recovery fallback when the far-side audio drops and an optional MP4 render.">
+<svg class="flow" viewBox="0 0 960 1040" role="img"
+     aria-label="Flow diagram: OBS and the P4next record the call; ripcard copies the card take; you file the recording and take into call_logs; ripa extracts tracks while caption frames are read in the background, lines up the card, transcribes with Deepgram (whisper as fallback), fills far-side silences from captions, names speakers from captions, and saves marker frames; process-transcript turns that into the review page.">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" class="arrow"/>
@@ -164,125 +164,145 @@ now ride inside the recording instead of a sidecar file.</p>
   </defs>
 
   <!-- ===== main spine (left) ===== -->
-  <rect class="box" x="40" y="24" width="300" height="60" rx="8"/>
-  <text class="title" x="56" y="48">OBS record</text>
-  <text class="sub" x="56" y="66">call.mkv: T1 mix·T2 you·T3 far·T4 marks</text>
+  <rect class="box" x="40" y="24" width="320" height="60" rx="8"/>
+  <text class="title" x="56" y="48">Record: OBS + P4next</text>
+  <text class="sub" x="56" y="66">mkv: T1 mix·T2 you·T3 far·T4 marker</text>
 
-  <rect class="box" x="40" y="128" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="152">Extract voice tracks</text>
-  <text class="sub" x="56" y="170">-map 0:a:1 / 0:a:2 → me.wav / them.wav</text>
+  <rect class="box" x="40" y="124" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="148">ripcard (File Transfer mode)</text>
+  <text class="sub" x="56" y="166">new card takes → ~/Desktop/P4next-takes</text>
 
-  <rect class="box" x="40" y="232" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="256">Detect silence (before whisper)</text>
-  <text class="sub" x="56" y="274">dropout guard + silent spans</text>
+  <rect class="box" x="40" y="220" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="244">File it by hand (the filter)</text>
+  <text class="sub" x="56" y="262">call_logs/week/date: name.mkv + name.card/</text>
 
-  <rect class="box" x="40" y="336" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="360">Transcribe each track</text>
-  <text class="sub" x="56" y="378">whisper-cli; a dead track is skipped</text>
+  <rect class="box" x="40" y="316" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="340">ripa [1 of 6] Extract tracks</text>
+  <text class="sub" x="56" y="358">voice tracks + combined name.mp3</text>
 
-  <rect class="box" x="40" y="440" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="464">Weave by timestamp</text>
-  <text class="sub" x="56" y="482">transcripts/call.txt: [You] / [Caller]</text>
+  <rect class="box" x="40" y="412" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="436">[2 of 6] Card take</text>
+  <text class="sub" x="56" y="454">align by pad presses, fill OBS dropouts</text>
 
-  <rect class="box" x="40" y="544" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="568">Clean hallucinations</text>
-  <text class="sub" x="56" y="586">drop silent-span lines + junk phrases</text>
+  <rect class="box" x="40" y="508" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="532">[3 of 6] Transcribe with Deepgram</text>
+  <text class="sub" x="56" y="550">both tracks at once; far side diarized</text>
 
-  <rect class="box output" x="40" y="648" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="672">Embed Track-4 markers (inline)</text>
-  <text class="sub" x="56" y="690">[MARKER] lines at their own offset</text>
+  <rect class="box" x="40" y="604" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="628">[4 of 6] Caption backup</text>
+  <text class="sub" x="56" y="646">far-side silence → caption words</text>
 
-  <rect class="box" x="40" y="752" width="300" height="56" rx="8"/>
-  <text class="title" x="56" y="776">rips: relabel Caller (optional)</text>
-  <text class="sub" x="56" y="794">caption OCR → real speaker names</text>
+  <rect class="box" x="40" y="700" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="724">[5 of 6] Caption names</text>
+  <text class="sub" x="56" y="742">each Deepgram speaker → a Meet name</text>
+
+  <rect class="box output" x="40" y="796" width="320" height="56" rx="8"/>
+  <text class="title" x="56" y="820">[6 of 6] Markers + frames</text>
+  <text class="sub" x="56" y="838">[MARKER] lines, markers/*.png</text>
+
+  <rect class="box output" x="40" y="892" width="320" height="64" rx="8"/>
+  <text class="title" x="56" y="916">/process-transcript</text>
+  <text class="sub" x="56" y="934">name-call.html + name-summary.json</text>
+  <text class="sub" x="56" y="950">asks of you first, Show more below</text>
 
   <!-- spine edges -->
-  <path class="edge" d="M190,84  L190,128" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,184 L190,232" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,288 L190,336" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,392 L190,440" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,496 L190,544" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,600 L190,648" marker-end="url(#ah)"/>
-  <path class="edge" d="M190,704 L190,752" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,84  L200,124" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,180 L200,220" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,276 L200,316" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,372 L200,412" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,468 L200,508" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,564 L200,604" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,660 L200,700" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,756 L200,796" marker-end="url(#ah)"/>
+  <path class="edge" d="M200,852 L200,892" marker-end="url(#ah)"/>
 
-  <!-- ===== right-side notes and branches ===== -->
+  <!-- ===== right side ===== -->
+  <!-- card take, the backup -->
+  <rect class="box fallback" x="480" y="124" width="440" height="72" rx="8"/>
+  <text class="title" x="496" y="148">Card take (backup)</text>
+  <text class="sub" x="496" y="166">_MIC1, _USB, _SOUND_PAD + stereo mix,</text>
+  <text class="sub" x="496" y="182">PLAY-key marks as WAV cue points</text>
+  <path class="edge" d="M360,152 L480,152" marker-end="url(#ah)"/>
+  <path class="edge opt" d="M520,196 L520,250 L430,250 L430,440 L362,440" marker-end="url(#aho)"/>
+  <text class="elabel" x="528" y="226">offset + dropout fill</text>
 
-  <!-- markers-in-recording note -->
-  <rect class="box input" x="470" y="24" width="440" height="60" rx="8"/>
-  <text class="sub" x="486" y="46">Markers ride Track 4 inside the recording.</text>
-  <text class="sub" x="486" y="64">Same clock as the voice, so nothing to sync.</text>
-  <path class="edge" d="M340,54 L470,54" marker-end="url(#ah)"/>
+  <!-- caption frames in the background -->
+  <rect class="box input" x="480" y="316" width="440" height="72" rx="8"/>
+  <text class="title" x="496" y="340">Caption frames (background)</text>
+  <text class="sub" x="496" y="358">starts with step 1; a frame every 2 s,</text>
+  <text class="sub" x="496" y="374">cached to parts/caption-frames.json</text>
+  <path class="edge" d="M360,344 L480,344" marker-end="url(#ah)"/>
+  <path class="edge" d="M920,352 L944,352 L944,728 L362,728" marker-end="url(#ah)"/>
+  <text class="elabel" x="800" y="720">frames → names</text>
 
-  <!-- Track-4 detail feeding the embed step -->
-  <rect class="box input" x="470" y="640" width="440" height="72" rx="8"/>
-  <text class="title" x="486" y="662">Track 4 = spoken "mark …" phrases</text>
-  <text class="sub" x="486" y="680">whisper reads them; each recognized phrase</text>
-  <text class="sub" x="486" y="696">becomes an inline [MARKER] line at its time</text>
-  <path class="edge" d="M470,676 L340,676" marker-end="url(#ah)"/>
+  <!-- whisper fallback -->
+  <rect class="box fallback" x="480" y="508" width="440" height="72" rx="8"/>
+  <text class="title" x="496" y="532">Deepgram failed or no key → whisper</text>
+  <text class="sub" x="496" y="550">per track, on this Mac, with a loud warning;</text>
+  <text class="sub" x="496" y="566">every Deepgram request has mip_opt_out=true</text>
+  <path class="edge opt" d="M360,536 L480,536" marker-end="url(#aho)"/>
 
-  <!-- FALLBACK: caption recovery -->
-  <rect class="box fallback" x="470" y="232" width="440" height="92" rx="8"/>
-  <text class="title" x="486" y="256">Far side silent? → ripcap (fallback)</text>
-  <text class="sub" x="486" y="274">OCR the on-screen Meet captions and</text>
-  <text class="sub" x="486" y="290">stitch a recovered far-side transcript.</text>
-  <text class="sub" x="486" y="306">needs a stable caption region</text>
-  <path class="edge opt" d="M340,260 C400,250 420,255 470,262" marker-end="url(#aho)"/>
-  <text class="elabel" x="352" y="240">dropout</text>
-  <path class="edge opt" d="M690,324 C690,390 470,420 342,455" marker-end="url(#aho)"/>
-  <text class="elabel" x="486" y="360">recovered words rejoin the transcript</text>
+  <!-- ripv and ripcap -->
+  <rect class="box output" x="480" y="796" width="440" height="72" rx="8"/>
+  <text class="title" x="496" y="820">ripv (optional): name.mp4</text>
+  <text class="sub" x="496" y="838">small copy to watch; card mix soundtrack</text>
+  <text class="sub" x="496" y="854">when a take is lined up</text>
 
-  <!-- OPTIONAL render (standalone, reads the mkv) -->
-  <rect class="box output" x="470" y="440" width="440" height="72" rx="8"/>
-  <text class="title" x="486" y="462">ripv (optional): render call.mp4</text>
-  <text class="sub" x="486" y="480">video + master mix (old files: you=L / caller=R).</text>
-  <text class="sub" x="486" y="496">playback only, reads the .mkv directly.</text>
+  <rect class="box fallback" x="480" y="604" width="440" height="72" rx="8"/>
+  <text class="title" x="496" y="628">ripcap (by hand)</text>
+  <text class="sub" x="496" y="646">rebuild a whole far side from captions</text>
+  <text class="sub" x="496" y="662">with a fixed --region</text>
 </svg>
 </div>
 
 <h2>The paths in words</h2>
 
-<p><strong>Happy path.</strong> OBS writes an MKV with four audio tracks: a master mix of everything
-(Track 1), your mic (Track 2), computer audio, meaning the far side plus the screen's sound (Track
-3), and the marker clips (Track 4). The pipeline reads that MKV directly, so there is no remux to
-sit through. The master becomes the combined <code>&lt;name&gt;.mp3</code>. It pulls the two voice tracks out by stream index, checks each for silence before
-spending any time on Whisper, transcribes them, and weaves them into one <code>[You]</code> /
-<code>[Caller]</code> transcript. Then it cleans out the hallucinations Whisper invents on silence
-and folds in your markers. Recordings from before 2026-10-08 have three tracks (mic, far side,
-markers) and no master; <code>ripa</code> picks the layout per file from its track count and builds
-the combined MP3 by mixing the separate tracks instead.</p>
+<p><strong>Recording.</strong> The P4next sends every channel to the Mac over one USB-C cable in
+Multi Track mode, and OBS's <code>Call P4</code> scene records them as four tracks: a mix of your
+mic and computer audio built in OBS (Track 1), your mic (Track 2, P4next channel 1), computer audio,
+which is the far side (Track 3, channels 7-8), and the sound pads (Track 4, channels 9-10). No app
+audio capture is involved, so the Chrome capture that used to drop silently is out of the path. The
+P4next also writes every channel to its microSD card.</p>
 
-<p><strong>Markers.</strong> This is the part that used to be a headache and no longer is. Each
-Stream Deck button plays a short "mark flag" / "mark action" clip onto Track 4, with monitoring off so
-nobody on the call hears it. Because that track is recorded on the same clock as the voice, a phrase at
-14:32 lines up with 14:32 in the transcript with no alignment math at all. Whisper reads the track
-like any other, and each recognized phrase becomes an inline <code>[MARKER]</code> line dropped in at
-its moment. No sidecar file, no anchor, no plugin. If that track comes out as digital silence,
-<code>ripa</code> warns that the Mark clips were probably routed to another track in OBS; rerun with
-<code>MARKER_TRACK=&lt;track&gt;</code> to read them from where they landed.</p>
+<p><strong>Getting the card off.</strong> In USB File Transfer mode the P4next is not the Mac's
+audio device, so <code>ripcard</code> copies only takes it has not pulled before (it keeps a
+<code>.pulled</code> list) and ejects the card as fast as it can. Then you choose which calls to keep
+and file the <code>.mkv</code> and its take into <code>call_logs</code>. That manual step is the
+filter: nothing processes a call you did not file, and nothing runs on a schedule.</p>
 
-<p><strong>Dead-channel fallback.</strong> The system-audio capture on Track 3 can die mid-call.
-When it does, the words only exist in the on-screen captions. <code>ripa</code> reads Meet's
-captions over every far-side silence of a minute or more, and splices them in as
-<code>[Caller]</code> lines when they show someone else talking. The fixed-region problem your
-first real recording exposed is gone: each frame is anchored on Meet's red end-call button, so the
-window can move mid-call. Meet only; <code>ripcap</code> remains for a hand-driven rebuild.</p>
+<p><strong>ripa.</strong> Caption frame reading starts in the background with step 1 and runs
+alongside the rest. The card take is lined up with the video from the pad presses, which land on
+both, and fills any stretch where an OBS track went silent. Deepgram nova-3 transcribes both tracks
+at once, the far side diarized into speakers; a track whose request fails falls back to whisper on
+this Mac. A long far-side silence with no card to fill it gets its words from the captions. Then
+each Deepgram speaker is matched to the Meet caption name its words belong to: no roster, a clear
+winner only, and a second voice under one person's name becomes <code>(second voice)</code>. Last,
+each pad press and PLAY-key mark becomes a <code>[MARKER] marker</code> line with a full-resolution
+frame. The run ends with a table of step times and the next command.</p>
+
+<p><strong>The report.</strong> <code>/process-transcript</code> in Claude Code writes the review
+page: what you were asked to do and what is owed to you first, then the summary, decisions and
+marked moments, with everything else behind Show more. It also writes a
+<code>-summary.json</code> for cross-call logs.</p>
 
 <h2>What changed, and why</h2>
 
-<p><strong>The remux stopped being mandatory.</strong> Transcription reads the MKV fine, so the MP4
-is now an optional render (<code>ripv</code>) you make only when you want to watch a call back,
-with the master mix as its audio (older recordings: you on the left channel and the caller on
-the right). The MKV is the file you keep.</p>
+<p><strong>OBS app audio capture is gone.</strong> On 2026-11-13 Chrome's capture stopped mid-call
+twice with no error in the OBS log. Recording the far side from the P4next's USB channel removes
+that dependency, and the card covers anything OBS still drops.</p>
 
-<p><strong>The affect layer is gone.</strong> The prosody and face-tracking scan caused more trouble
-than it earned, so it and its two heavy dependencies came out. That also un-broke the test suite.</p>
+<p><strong>Deepgram does the transcribing.</strong> It takes seconds instead of minutes, and its
+diarization lets the far side split into people. Whisper stays as the fallback, and
+<code>TRANSCRIBER=whisper</code> keeps a run local.</p>
 
-<p><strong>Markers moved inside the recording.</strong> The old design logged button presses to a
-sidecar file stamped with wall-clock time, then tried to align them to the recording using a
-<code>record_start</code> anchor. OBS never wrote a reliable timestamp, which made that fragile. A
-sound on a third track has no such problem: it is already in the right place.</p>
+<p><strong>Names come from the captions alone.</strong> The roster file is no longer needed;
+<code>rips</code> stays only for old recordings.</p>
 
-<p class="meta">casting-call · pipeline flow · updated 2026-10-08 (four-track rig)</p>
+<p><strong>One marker.</strong> Pad A replaces the seven Stream Deck keys. What a press meant comes
+from the talk around it and the screen grab, which the report summarizes. Recordings from before
+2026-11-14 still parse with their seven types.</p>
+
+<p class="meta">casting-call · pipeline flow · updated 2026-11-16 (P4next rig, Deepgram, caption names)</p>
 <!-- ===== CONTENT END ===== -->
 
 <script>

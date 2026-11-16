@@ -62,215 +62,239 @@
 <body>
 
 <h1>casting-call: User Guide</h1>
-<p class="subtitle">Turn a recorded call into a transcript that knows who said what, with your flagged moments dropped in. Written to be read cold, with no prior knowledge of the tool assumed.</p>
+<p class="subtitle">Turn a recorded call into a review page: what you were asked to do, what is owed to you, who said what, and the moments you flagged. Written to be read cold, with no prior knowledge of the tool assumed.</p>
 
 <nav>
   <h2>Contents</h2>
   <ol>
     <li><a href="#what">What this is</a></li>
+    <li><a href="#flow">Call to report, start to finish</a></li>
     <li><a href="#install">Install and prerequisites</a></li>
     <li><a href="#vocab">Words you need first</a></li>
+    <li><a href="#card">Pull the card (ripcard)</a></li>
+    <li><a href="#file">File the call</a></li>
     <li><a href="#transcribe">Transcribe a call (ripa)</a></li>
-    <li><a href="#commands">Commands and flags</a></li>
-    <li><a href="#attribute">Put names on speakers (rips)</a></li>
-    <li><a href="#recover">Recover a dead channel (ripcap)</a></li>
-    <li><a href="#extras">Render video (ripv)</a></li>
+    <li><a href="#report">Review the call (/process-transcript)</a></li>
+    <li><a href="#commands">Commands and settings</a></li>
+    <li><a href="#other">Other tools (ripv, ripcap, rips, ripo)</a></li>
     <li><a href="#faq">Good to know</a></li>
   </ol>
 </nav>
 
 <h2 id="what">1. What this is</h2>
-<p>casting-call is a set of command-line tools that run <em>after</em> a call is recorded. You record the call with OBS as one <code>.mkv</code> that holds the screen plus separate audio tracks, and casting-call turns that file into a timestamped, speaker-labeled transcript. The whole thing runs locally: no accounts, no uploads.</p>
-<p>It is for one person (you) processing your own recorded calls, comfortable in a terminal. It does <strong>not</strong> record the call, join the meeting, or run in real time, and it does not guess at a speaker it cannot confidently identify. Anything uncertain stays labeled <code>Caller</code> rather than being made up.</p>
-<p>The map: <code>ripa</code> transcribes, <code>rips</code> puts real names on the far-side lines, <code>ripcap</code> rebuilds the far side from on-screen captions when its audio failed, and <code>ripv</code> renders a playable video. Setting up the recording rig itself is a separate document, <code>docs/setup-guide.html</code>.</p>
+<p>casting-call is a set of command-line tools and one Claude Code skill that run <em>after</em> a call is recorded. OBS records the call as one <code>.mkv</code> with the screen plus separate audio tracks, fed by a Zoom PodTrak P4next. The P4next also writes every channel to its own microSD card as a backup. casting-call turns those into a transcript with real names on the far side, a screen grab for every moment you flagged, and a review page that leads with your to-do list.</p>
+<p>It is for one person processing their own calls, comfortable in a terminal. It does <strong>not</strong> join the meeting or run in real time. The goal is the fastest path from a finished call to the review page. The one manual step, choosing which calls to file, is there on purpose: it keeps calls you do not care about out of the pipeline.</p>
 
-<h2 id="install">2. Install and prerequisites</h2>
-<p>The tools lean on ffmpeg and Whisper for audio and tesseract for reading captions. On a fresh Mac:</p>
-<pre><code>brew install ffmpeg whisper-cpp tesseract
+<h2 id="flow">2. Call to report, start to finish</h2>
+<ol>
+  <li><strong>Before the call:</strong> P4next on, OBS on the <code>Call P4</code> scene, Meet captions (CC) on. Start OBS recording, press REC on the P4next, then press pad A once. That first press lines the card up with the video later.</li>
+  <li><strong>During:</strong> press pad A whenever a moment is worth coming back to. Mute in Meet, not on the P4next.</li>
+  <li><strong>After:</strong> stop both recorders. On the P4next, Menu &gt; USB File Transfer, run <code>ripcard</code>, and exit File Transfer as soon as it says so.</li>
+  <li><strong>File it:</strong> for a call worth keeping, move the <code>.mkv</code> and its card take into <code>call_logs/&lt;week&gt;/&lt;date&gt;/</code> and give them one name.</li>
+  <li><strong>Transcribe:</strong> <code>ripa</code> on the day folder.</li>
+  <li><strong>Review:</strong> <code>/process-transcript</code> on the call folder, in Claude Code. The report opens in Chrome.</li>
+</ol>
+<p>The rig itself (wiring, P4next menu settings, the OBS scene) is in <code>docs/setup-guide.html</code> and on the call rig page in <code>docs/call-rig/</code>.</p>
+
+<h2 id="install">3. Install and prerequisites</h2>
+<pre><code>brew install ffmpeg tesseract whisper-cpp
 pip3 install --break-system-packages pillow numpy pytesseract
-
-# Whisper model, ~3 GB, one time
+# optional, for the styled output
+brew install gum
+pip3 install --break-system-packages rich
+# Deepgram key, in the repo root (gitignored)
+echo 'DEEPGRAM_API_KEY=...' &gt;&gt; ~/Developer/casting-call/.env
+# whisper model, only used as the fallback (~3 GB, one time)
 mkdir -p ~/whisper-models
 curl -o ~/whisper-models/ggml-large-v3.bin -L \
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'
+# the report skill, linked once per machine
+ln -sfn ~/Developer/casting-call/skills/process-transcript ~/.claude/skills/process-transcript</code></pre>
+<div class="note">The short command names (<code>ripa</code>, <code>ripcard</code>, and the rest) are shell aliases that live in a separate dotfiles repo, not here. Every command also works without them: run <code>bash bin/&lt;script&gt;.sh</code> from the repo root. The mapping is in the commands table below.</div>
 
-# Silero VAD model (~1 MB) so Whisper only transcribes real speech
-curl -sL -o ~/whisper-models/ggml-silero-v5.1.2.bin \
-  https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
-
-# Your roster of names (stays local, gitignored)
-cp speakers_roster.example.json speakers_roster.json   # then edit it</code></pre>
-<div class="note">The short command names (<code>ripa</code>, <code>rips</code>, and the rest) are shell aliases that live in a separate dotfiles repo, not here. Every command also works without them: run <code>bash bin/&lt;script&gt;.sh ...</code> from the repo root. This guide shows both.</div>
-<div class="warn">The transcriber expects the Whisper model at <code>~/whisper-models/ggml-large-v3.bin</code>. If it is missing, <code>ripa</code> stops and prints the exact download command rather than guessing.</div>
-
-<h2 id="vocab">3. Words you need first</h2>
+<h2 id="vocab">4. Words you need first</h2>
 <dl class="defn">
   <dt>Track</dt>
-  <dd>One audio stream inside the recording. The rig records four: Track 1 (<code>0:a:0</code>) is the master mix, everything below summed by OBS; Track 2 (<code>0:a:1</code>) is your mic; Track 3 (<code>0:a:2</code>) is system audio, meaning everything that is not your mic or a marker: the far side in Meet, Slack, Zoom or Roam, plus anything else the Mac plays; Track 4 (<code>0:a:3</code>) carries marker sounds only. Recordings from before 2026-10-08 have three tracks and no master (Track 1 mic, Track 2 far side, Track 3 markers), and <code>ripa</code> still reads them. The tools read tracks by number, not by channel-splitting a stereo mix.</dd>
-  <dt>You / Caller</dt>
-  <dd>The two speaker labels in a fresh transcript. <code>You</code> is your mic (Track 2). <code>Caller</code> is everyone on the far side (Track 3, the system audio), lumped together until <code>rips</code> puts real names on them.</dd>
+  <dd>One audio stream inside the OBS recording. Track 1 is the mix (your mic plus computer audio, mixed in OBS). Track 2 is your mic (P4next channel 1). Track 3 is computer audio, which is the far side of the call (channels 7-8). Track 4 is the marker (the sound pads, channels 9-10). Older recordings had three tracks and no mix; <code>ripa</code> reads both.</dd>
+  <dt>You / the far side</dt>
+  <dd><code>You</code> is your mic. Every other label is the far side: <code>Caller</code> when no name was found, or a real name read from Meet's captions, like <code>Corey Weathers</code>.</dd>
+  <dt>Second voice</dt>
+  <dd>A second voice that came through one person's Meet connection, such as a voice demo they ran or a second person in their room. It shows as <code>Ed Charbeneau (second voice)</code>.</dd>
   <dt>Marker</dt>
-  <dd>A moment you flagged during the call by pressing a Stream Deck button, which played a short sound onto Track 4. Seven buttons: <strong>topic</strong> (the conversation moved on), <strong>action for me</strong>, <strong>action for them</strong>, <strong>important</strong>, <strong>question</strong>, <strong>quote</strong>, and <strong>video</strong> (something on screen worth a screenshot). In the transcript each becomes a <code>[MARKER]</code> line at that timestamp, tagged with its type. The label is <code>MARKER</code>, not <code>MARK</code>, so it never collides with a real person named Mark.</dd>
+  <dd>A moment you flagged by pressing pad A on the P4next. It plays the word "marker" onto Track 4 and the card's pads file. Nobody on the call hears it. In the transcript it is <code>[0:12:34] [MARKER] marker</code>, and <code>ripa</code> saves a full-resolution screen grab for it. The P4next's PLAY key adds a silent mark to the card, which becomes a marker the same way.</dd>
+  <dt>Card take</dt>
+  <dd>The P4next's own recording of one call: a stereo mix plus one file per channel (<code>_MIC1</code>, <code>_USB</code>, <code>_SOUND_PAD</code>). It is the backup for anything OBS dropped.</dd>
   <dt>Transcript</dt>
-  <dd>A plain-text file of <code>[h:mm:ss] [Label] text</code> lines, sorted by time. Everything downstream reads and writes this one format.</dd>
+  <dd>A plain-text file of <code>[h:mm:ss] [Label] text</code> lines, sorted by time, with a few <code>#</code> header lines saying which engine transcribed each track. Everything downstream reads this one format.</dd>
   <dt>Dropout</dt>
-  <dd>When a track captures fine and then goes silent mid-call (the far-side capture is prone to this). The transcriber flags a sustained silence and points you at recovery.</dd>
-  <dt>Hallucination</dt>
-  <dd>Words Whisper invents when it transcribes silence, like a repeated "Thank you" or "Subtitles by the Amara.org community." casting-call strips these automatically wherever a track was silent.</dd>
-  <dt>Caption region</dt>
-  <dd>The <code>x,y,w,h</code> rectangle, in full-frame pixels, where Meet draws its on-screen captions. <code>rips</code> and <code>ripcap</code> read that rectangle, so they need it as <code>--region</code>.</dd>
-  <dt>Roster</dt>
-  <dd>Your local <code>speakers_roster.json</code>: your own name plus the people you call. Caption OCR fuzzy-matches against it, so a noisy read still lands on the right name.</dd>
+  <dd>A track that records fine and then goes silent mid-call. With a card take, <code>ripa</code> fills the gap from the card. Without one, a Meet call's far side is filled from the on-screen captions.</dd>
 </dl>
 
-<h2 id="transcribe">4. Transcribe a call <span class="tag">ripa</span></h2>
-<p>Point it at a folder holding one or more recordings. It reads each <code>.mkv</code> directly, no conversion step.</p>
-<pre><code>ripa ~/calls/2026-07-24
+<h2 id="card">5. Pull the card <span class="tag">ripcard</span></h2>
+<p>While the P4next is in USB File Transfer mode it is not the Mac's audio device, so you hear no computer audio. <code>ripcard</code> keeps that window short: it copies only takes it has not pulled before into <code>~/Desktop/P4next-takes/</code>, ejects the card, and prints <em>Card ejected. Exit USB File Transfer on the P4next now.</em></p>
+<pre><code>ripcard        # run from any folder</code></pre>
+<ul>
+  <li><strong>Progress:</strong> one line with percent, MB, speed, time left and the current file. A one-hour call is about 3.7 GB, a few minutes over the P4next's USB.</li>
+  <li><strong>Never twice:</strong> every pulled take is listed in <code>~/Desktop/P4next-takes/.pulled</code>, so a take you moved into <code>call_logs</code> or deleted is not copied again. <code>PULL_AGAIN=1 ripcard</code> ignores that list.</li>
+  <li><strong>Skipped on purpose:</strong> MIC2 to MIC4 are unused inputs and pure silence. <code>PULL_ALL_INPUTS=1</code> copies them anyway.</li>
+  <li><strong>Safe:</strong> nothing on the card is changed or deleted. Clear the card from the P4next menu now and then. If a copy fails, the card stays mounted and you rerun.</li>
+</ul>
+
+<h2 id="file">6. File the call</h2>
+<p>This step is manual on purpose: only calls worth keeping go in. Put the recording and its card take loose in the day folder, with one shared name. <code>ripa</code> creates the call's own folder next to them.</p>
+<pre><code>call_logs/2026-w47/2026-11-16/
+  2026-11-16-devrel-weekly.mkv        &lt;- from ~/Desktop, renamed
+  2026-11-16-devrel-weekly.card/      &lt;- from ~/Desktop/P4next-takes/261116_125935/, renamed
+  2026-11-16-devrel-weekly/           &lt;- ripa writes this</code></pre>
+<p>Renaming the take is optional: an unrenamed take folder in the day folder is paired with its recording by start time, and <code>ripa</code> says which one it picked. It refuses a pairing more than 10 minutes apart.</p>
+
+<h2 id="transcribe">7. Transcribe a call <span class="tag">ripa</span></h2>
+<pre><code>ripa ~/Desktop/call_logs/2026-w47/2026-11-16
 # or, without the alias:
-bash bin/extract_audio_stereo.sh ~/calls/2026-07-24</code></pre>
-<p>For each recording it makes a folder named after the recording and puts everything there. The merged transcript is <code>&lt;name&gt;/&lt;name&gt;.txt</code> and a combined mono MP3 of the whole call is <code>&lt;name&gt;/&lt;name&gt;.mp3</code> (the master track, Track 1, loudness-normalized; on an older three-track recording it is a mix of the separate tracks instead), with a <code>parts/</code> subfolder holding each track on its own (<code>you.mp3</code>, <code>caller.mp3</code>, <code>markers.mp3</code>) and its own raw transcript. To build the merged transcript it pulls your mic (Track 2) and the system audio (Track 3) out as mono audio, checks each for silence, transcribes the ones that have speech, and weaves them together. If Track 3 went quiet for a minute or more on a Meet call, it reads the captions over that stretch and splices the far side back in. Then it reads the marker track (Track 4) and folds your markers in at their timestamps. It picks the layout per file by counting audio tracks: four or more is the current rig, three is the pre-2026-10-08 rig, and two is that older rig without markers. A recording that already has a transcript is skipped, so re-running the folder is safe and cheap.</p>
+bash bin/extract_audio_stereo.sh ~/Desktop/call_logs/2026-w47/2026-11-16</code></pre>
+<p>For each recording without a transcript, <code>ripa</code> runs six steps and prints them as <code>[1 of 6]</code> to <code>[6 of 6]</code>:</p>
+<ol>
+  <li><strong>Extract tracks</strong> from the <code>.mkv</code>. Reading Meet's caption frames starts at the same time, in the background, cached to <code>parts/caption-frames.json</code>.</li>
+  <li><strong>Card take:</strong> line it up with the video from the pad presses (written to <code>align.json</code>), then fill any OBS dropout from the matching card file.</li>
+  <li><strong>Transcribe</strong> both tracks with Deepgram nova-3 at the same time. Your track is plain; the far side is diarized, so Deepgram splits it into speakers. If a request fails, that track falls back to whisper on this Mac, with a loud warning line.</li>
+  <li><strong>Caption backup:</strong> on a Meet call, a long far-side silence with no card to fill it gets its words from the on-screen captions.</li>
+  <li><strong>Caption names:</strong> each Deepgram speaker gets the Meet caption name its words belong to (details below).</li>
+  <li><strong>Markers and frames:</strong> each pad press and PLAY mark becomes a <code>[MARKER] marker</code> line and a full-resolution PNG in <code>markers/</code>.</li>
+</ol>
+<p>It ends with a table of step times, the total, and a <em>ready for review</em> line with the exact <code>/process-transcript</code> command to run next. With gum and rich installed the output is styled; <code>RIPA_PLAIN=1</code> or a missing tool gives plain text. Statuses always say ok, warn or failed in words.</p>
 
 <figure>
   <div class="diagram">
-  <svg viewBox="0 0 640 280" role="img" aria-label="The recording's four audio tracks flow through ripa. Track 1, the master mix, becomes the combined MP3. Track 2 becomes You lines, Track 3 becomes Caller lines, Track 4 becomes MARKER lines, all merged by time into one transcript.">
-    <text x="20" y="24" class="svg-label" font-size="11" font-weight="700" fill="#555">recording.mkv</text>
-    <rect x="20" y="34" width="150" height="40" rx="6" fill="#f4f5f7" stroke="#888"/>
-    <text x="30" y="52" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 1 = master</text>
-    <text x="30" y="66" class="svg-label" font-size="9" fill="#555">full mix → name.mp3 (0:a:0)</text>
-    <rect x="20" y="82" width="150" height="40" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
-    <text x="30" y="100" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 2 = You</text>
-    <text x="30" y="114" class="svg-label" font-size="9" fill="#555">your mic (0:a:1)</text>
-    <rect x="20" y="130" width="150" height="40" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
-    <text x="30" y="148" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 3 = Caller</text>
-    <text x="30" y="162" class="svg-label" font-size="9" fill="#555">far side + screen (0:a:2)</text>
-    <rect x="20" y="178" width="150" height="40" rx="6" fill="#fbf7ec" stroke="#b2741a"/>
-    <text x="30" y="196" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 4 = markers</text>
-    <text x="30" y="210" class="svg-label" font-size="9" fill="#555">button sounds (0:a:3)</text>
-
-    <line x1="170" y1="54"  x2="248" y2="90" stroke="#888" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#ar)"/>
-    <line x1="170" y1="102" x2="248" y2="98" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-    <line x1="170" y1="150" x2="248" y2="106" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-    <line x1="170" y1="198" x2="248" y2="114" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-
-    <rect x="250" y="80" width="96" height="44" rx="8" fill="#fff" stroke="#2f6f4f"/>
-    <text x="298" y="100" text-anchor="middle" class="svg-label" font-size="12" font-weight="800" fill="#2f6f4f">ripa</text>
-    <text x="298" y="114" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">transcribe + weave</text>
-    <line x1="346" y1="102" x2="398" y2="102" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
-
-    <rect x="400" y="40" width="222" height="128" rx="6" fill="#f4f5f7" stroke="#ddd"/>
-    <text x="412" y="60" class="svg-label" font-size="9.5" fill="#888">name/name.txt</text>
-    <text x="412" y="80"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:11] [You] we'll go here</text>
-    <text x="412" y="98"  class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:12] [Caller] send the deck</text>
-    <text x="412" y="116" class="svg-label" font-size="9.5" fill="#b2741a">[0:00:12] [MARKER] action-me</text>
-    <text x="412" y="134" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:15] [You] sounds good</text>
-    <text x="412" y="152" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:00:18] [Caller] talk soon</text>
-
-    <text x="20" y="246" class="svg-label" font-size="10" fill="#555">Every track shares one clock, so the merge lines up by timestamp with no syncing.</text>
-    <text x="20" y="264" class="svg-label" font-size="10" fill="#555">A silent track is skipped; its hallucinated lines never enter the transcript.</text>
+  <svg viewBox="0 0 640 300" role="img" aria-label="Inputs on the left: the OBS recording with your mic, the far side and the marker on their own tracks, the screen video, and the card take. ripa transcribes with Deepgram, names speakers from captions, saves frames, and writes a named transcript.">
+    <text x="20" y="22" class="svg-label" font-size="11" font-weight="700" fill="#555">name.mkv (OBS)</text>
+    <rect x="20" y="30" width="160" height="38" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
+    <text x="30" y="47" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 2 = You</text>
+    <text x="30" y="61" class="svg-label" font-size="9" fill="#555">P4next ch 1, your mic</text>
+    <rect x="20" y="74" width="160" height="38" rx="6" fill="#eef5f0" stroke="#2f6f4f"/>
+    <text x="30" y="91" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 3 = far side</text>
+    <text x="30" y="105" class="svg-label" font-size="9" fill="#555">P4next ch 7-8, computer audio</text>
+    <rect x="20" y="118" width="160" height="38" rx="6" fill="#fbf7ec" stroke="#b2741a"/>
+    <text x="30" y="135" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Track 4 = marker</text>
+    <text x="30" y="149" class="svg-label" font-size="9" fill="#555">P4next ch 9-10, pad A</text>
+    <rect x="20" y="162" width="160" height="38" rx="6" fill="#f4f5f7" stroke="#888"/>
+    <text x="30" y="179" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">Screen video</text>
+    <text x="30" y="193" class="svg-label" font-size="9" fill="#555">Meet captions, frames</text>
+    <rect x="20" y="214" width="160" height="38" rx="6" fill="#f4f5f7" stroke="#888" stroke-dasharray="4 3"/>
+    <text x="30" y="231" class="svg-label" font-size="10.5" font-weight="700" fill="#1a1a1a">name.card/ (backup)</text>
+    <text x="30" y="245" class="svg-label" font-size="9" fill="#555">fills OBS dropouts</text>
+    <line x1="180" y1="49"  x2="248" y2="120" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="180" y1="93"  x2="248" y2="128" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="180" y1="137" x2="248" y2="136" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="180" y1="181" x2="248" y2="144" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <line x1="180" y1="233" x2="248" y2="152" stroke="#888" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+    <rect x="250" y="104" width="110" height="64" rx="8" fill="#fff" stroke="#2f6f4f"/>
+    <text x="305" y="126" text-anchor="middle" class="svg-label" font-size="12" font-weight="800" fill="#2f6f4f">ripa</text>
+    <text x="305" y="141" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">Deepgram + caption</text>
+    <text x="305" y="153" text-anchor="middle" class="svg-label" font-size="8.5" fill="#555">names + frames</text>
+    <line x1="360" y1="136" x2="398" y2="136" stroke="#888" stroke-width="1.4" marker-end="url(#ar)"/>
+    <rect x="400" y="60" width="226" height="150" rx="6" fill="#f4f5f7" stroke="#ddd"/>
+    <text x="412" y="80" class="svg-label" font-size="9.5" fill="#888">name/name.txt</text>
+    <text x="412" y="100" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:12:10] [You] we'll go here</text>
+    <text x="412" y="118" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:12:12] [Corey Weathers] send it</text>
+    <text x="412" y="136" class="svg-label" font-size="9.5" fill="#b2741a">[0:12:13] [MARKER] marker</text>
+    <text x="412" y="154" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:12:15] [Dana] I can take that</text>
+    <text x="412" y="172" class="svg-label" font-size="9.5" fill="#1a1a1a">[0:12:18] [You] sounds good</text>
+    <text x="412" y="196" class="svg-label" font-size="9" fill="#888">+ markers/*.png, align.json, parts/</text>
+    <text x="20" y="280" class="svg-label" font-size="10" fill="#555">The OBS tracks share one clock, so they merge by timestamp; the card is lined up to them by the pad presses.</text>
     <defs>
       <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#888"/></marker>
     </defs>
   </svg>
   </div>
-  <figcaption>The four tracks are recorded together, so their timestamps already agree. That is why a marker pressed at 0:12 lands next to the 0:12 line with no alignment step.</figcaption>
+  <figcaption>What goes into <code>ripa</code> and what comes out. The dashed arrow is the card: used where an OBS track dropped, and lined up to the video by the pad presses.</figcaption>
 </figure>
 
-<div class="warn">If the far-side track went silent for a long stretch, <code>ripa</code> warns that the capture likely dropped and tells you the timestamp, then points you at <code>ripcap</code>. The transcript is still produced from whatever real audio exists.</div>
+<h3>How far-side names are found</h3>
+<p>Meet labels every caption with the speaker's display name, so turn captions on for every call. <code>ripa</code> reads a frame every 2 seconds, finds the caption panel from Meet's red end-call button (so the window can move), and collects the names. There is no roster: names come from the captions alone.</p>
+<ul>
+  <li>Misreads are folded into the most common spelling ("Corey", "Corey Weathore" and "Corey Weathers" are one person). A name seen in only one frame is dropped, and "You" (Meet's label for you, including OCR misreads like "vou") never counts.</li>
+  <li>Caption words are shifted 2.5 seconds earlier, because captions trail the voice.</li>
+  <li>A Deepgram speaker takes a name when that name holds at least 60% of its caption words, with a lead of at least 3 times the runner-up, over at least 20 words. Otherwise it stays <code>Caller</code>.</li>
+  <li>If two speakers win the same name, the one who talked more keeps it and the other becomes <code>&lt;Name&gt; (second voice)</code>.</li>
+  <li>On a call with only one far-side person, every far-side line gets that name.</li>
+</ul>
+<p>The unnamed transcript is kept in <code>parts/pre-names.txt</code>, and every speaker's votes are in <code>parts/speaker-names.json</code>. A whisper transcript has no speakers, so there each line is voted on alone (70% of at least 5 caption words).</p>
+<div class="warn">Transcription sends each track to Deepgram. Every request carries <code>mip_opt_out=true</code>, which keeps the call audio out of Deepgram's Model Improvement Program, and it cannot be turned off. <code>TRANSCRIBER=whisper ripa ...</code> keeps the whole run on this Mac.</div>
 
-<div class="warn">If the marker track is digital silence (peak at or below -90 dB), <code>ripa</code> warns you. That usually means the Mark clips were routed to the wrong track in OBS, not that you never pressed a key. Find the track the clips landed on, delete the transcript, and rerun with <code>MARKER_TRACK=&lt;track number&gt;</code> (1-based), for example <code>MARKER_TRACK=3 ripa ~/calls/2026-10-08</code>.</div>
+<h3>What it writes</h3>
+<pre><code>name/
+  name.txt                  the merged transcript
+  name.mp3                  the whole call, for the report's audio player
+  markers/marker-HHMMSS.png one full-resolution frame per marker
+  markers.json              each marker's time, type and frame
+  align.json                card offset and how it was found
+  parts/                    per-track audio and transcripts, Deepgram responses,
+                            caption-frames.json, speaker-names.json, pre-names.txt,
+                            health.txt (OBS against the card, per track)</code></pre>
 
-<h2 id="commands">5. Commands and flags</h2>
+<h2 id="report">8. Review the call <span class="tag">/process-transcript</span></h2>
+<p>In Claude Code, from any folder:</p>
+<pre><code>/process-transcript ~/Desktop/call_logs/2026-w47/2026-11-16/2026-11-16-devrel-weekly</code></pre>
+<p>It writes <code>&lt;name&gt;-call.html</code> next to the transcript and opens it in Chrome. Give it a day folder and it also writes a day page; a parent folder adds an index.</p>
+<p><strong>Always visible, in this order:</strong></p>
+<ol>
+  <li>Stat tiles (length, people, asks, owed, marked) and a play bar that stays at the top.</li>
+  <li><strong>Asks of you:</strong> "Corey Weathers asked you to ..." or "You said you'd ...", each with a ▶ button that plays from that moment.</li>
+  <li><strong>Owed to you:</strong> "Greg will ...".</li>
+  <li><strong>Summary</strong> and <strong>Decisions</strong>.</li>
+  <li><strong>Marked moments:</strong> each pad press with a one-line summary of the talk around it and its screen grab.</li>
+</ol>
+<p><strong>Behind Show more:</strong> open questions, the call cut into subject sections, <em>Who's speaking</em> (one labeled row per person, talk share, how the names were found), and <em>Transcript by speaker</em> (one column per person, four on screen, scroll sideways for more). Rows and columns carry each person's name, so nothing relies on color.</p>
+<p>Lines the model found, rather than ones you flagged, carry an <em>inferred</em> badge so you can prune them. A machine-readable <code>&lt;name&gt;-summary.json</code> (people, asks, owed, decisions, subjects, markers) is written next to the page for cross-call logs later.</p>
+
+<h2 id="commands">9. Commands and settings</h2>
 <table>
   <thead><tr><th>Command</th><th>Script</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every recording in a folder to its own <code>&lt;name&gt;/</code> folder (transcript + combined MP3 + per-track <code>parts/</code>), markers folded in.</td></tr>
-    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional: re-encode to a smaller H.265 <code>.mp4</code> in the recording's <code>&lt;name&gt;/</code> folder, with the master mix as its audio (older recordings: you on the left channel, caller on the right).</td></tr>
-    <tr><td><code>rips rec --region ...</code></td><td><code>extract_speakers.sh</code></td><td>OCR the captions, put real names on <code>Caller</code> lines.</td></tr>
-    <tr><td><code>ripcap rec --region ...</code></td><td><code>stitch_captions.sh</code></td><td>Rebuild the far-side words from captions when its audio failed.</td></tr>
+    <tr><td><code>ripcard</code></td><td><code>pull_card.sh</code></td><td>Copy new card takes to <code>~/Desktop/P4next-takes/</code>, eject, tell you to exit File Transfer.</td></tr>
+    <tr><td><code>ripa [dir]</code></td><td><code>extract_audio_stereo.sh</code></td><td>Transcribe every new recording in a folder, name the far side, fill dropouts, save marker frames.</td></tr>
+    <tr><td><code>ripv [dir]</code></td><td><code>convert_video.sh</code></td><td>Optional small <code>.mp4</code> to watch later; its soundtrack is the card's mix when a take is lined up.</td></tr>
+    <tr><td><code>ripo</code></td><td><code>overnight_rip.sh</code></td><td><code>ripa</code> and <code>ripv</code> on anything not done, then moves finished <code>.mkv</code> files to the Trash. Run by hand only; nothing schedules it.</td></tr>
+    <tr><td><code>ripcap rec --region ...</code></td><td><code>stitch_captions.sh</code></td><td>Rebuild a whole far side from captions when its audio is unusable.</td></tr>
+    <tr><td><code>rips rec --region ...</code></td><td><code>extract_speakers.sh</code></td><td>Older roster-based naming. <code>ripa</code> now names speakers without a roster.</td></tr>
   </tbody>
 </table>
-<p><code>ripa</code> and <code>ripv</code> take a directory (default: current), and <code>ripa</code> takes an optional Whisper model path as a second argument. The two caption tools take the recording plus the flags below.</p>
-
-<h2 id="attribute">6. Put names on speakers <span class="tag">rips</span></h2>
-<p>A fresh transcript calls everyone on the far side <code>Caller</code>. Meet's on-screen captions already say who is speaking, so <code>rips</code> samples the video, OCRs the caption band, matches names against your roster, and rewrites the <code>Caller</code> lines with real names. Names it cannot place stay <code>Caller</code>, and it asks you about the ones it is unsure of.</p>
-<pre><code>rips recording.mkv --region 120,1850,900,180 --transcript recording/recording.txt
-# or:
-bash bin/extract_speakers.sh recording.mkv --region 120,1850,900,180 --transcript recording/recording.txt</code></pre>
-
-<figure>
-  <div class="diagram">
-  <svg viewBox="0 0 640 210" role="img" aria-label="Anatomy of the rips command: the command name, the recording, the caption region flag, and the transcript flag, each labeled with what it does.">
-    <text x="20" y="40" class="svg-label" font-size="13" font-weight="800" fill="#2f6f4f">rips</text>
-    <text x="70" y="40" class="svg-label" font-size="13" fill="#1a1a1a">recording.mkv</text>
-    <text x="230" y="40" class="svg-label" font-size="13" fill="#b2741a">--region 120,1850,900,180</text>
-    <text x="20" y="62" class="svg-label" font-size="13" fill="#1d7a4d">--transcript recording/recording.txt</text>
-
-    <line x1="34" y1="48" x2="34" y2="86" stroke="#888" stroke-width="1"/>
-    <text x="34" y="100" text-anchor="middle" class="svg-label" font-size="9.5" fill="#555">the tool</text>
-
-    <line x1="130" y1="48" x2="130" y2="118" stroke="#888" stroke-width="1"/>
-    <text x="130" y="132" text-anchor="middle" class="svg-label" font-size="9.5" fill="#555">the recording to read frames from</text>
-
-    <line x1="330" y1="48" x2="330" y2="148" stroke="#b2741a" stroke-width="1"/>
-    <text x="330" y="162" text-anchor="middle" class="svg-label" font-size="9.5" fill="#b2741a">where captions sit on screen (required)</text>
-
-    <line x1="150" y1="70" x2="150" y2="180" stroke="#1d7a4d" stroke-width="1"/>
-    <text x="150" y="194" text-anchor="middle" class="svg-label" font-size="9.5" fill="#1d7a4d">the transcript to relabel in place</text>
-  </svg>
-  </div>
-  <figcaption>Without <code>--transcript</code>, <code>rips</code> still builds the speaker timeline (<code>speakers.json</code>); add it to rewrite an existing transcript in one pass.</figcaption>
-</figure>
-
 <table>
-  <thead><tr><th>Flag</th><th>Default</th><th>What it does</th></tr></thead>
+  <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>--region x,y,w,h</code></td><td>required</td><td>Caption crop in full-frame pixels. Without it the tool stops.</td></tr>
-    <tr><td><code>--transcript</code></td><td>none</td><td>An existing transcript to relabel in place.</td></tr>
-    <tr><td><code>--callers N</code></td><td>auto</td><td><code>1</code> forces "one other person" (all <code>Caller</code> lines become them); <code>2</code> or more forces timed attribution. Omit to auto-detect.</td></tr>
-    <tr><td><code>--roster</code></td><td><code>speakers_roster.json</code></td><td>Where to read names from.</td></tr>
-    <tr><td><code>--out</code></td><td>next to the recording</td><td>Output directory for frames and <code>speakers.json</code>.</td></tr>
+    <tr><td><code>TRANSCRIBER</code></td><td><code>deepgram</code></td><td><code>whisper</code> keeps everything on this Mac.</td></tr>
+    <tr><td><code>CAPTION_NAMES</code></td><td><code>1</code></td><td><code>0</code> skips naming the far side.</td></tr>
+    <tr><td><code>CAPTION_BACKUP</code></td><td><code>1</code></td><td><code>0</code> skips filling far-side silences from captions.</td></tr>
+    <tr><td><code>MARKER_MODE</code></td><td><code>auto</code></td><td><code>single</code> (pad A) or <code>legacy</code> (older seven-key recordings).</td></tr>
+    <tr><td><code>MARKER_TRACK</code></td><td>auto</td><td>Read markers from another track, for a misrouted recording.</td></tr>
+    <tr><td><code>RIPA_PLAIN</code></td><td>off</td><td><code>1</code> prints plain text even with gum and rich installed.</td></tr>
+    <tr><td><code>RIPA_PYTHON</code></td><td><code>python3</code></td><td>Which Python runs the helpers (a venv with rich, for example).</td></tr>
+    <tr><td><code>CARD_INBOX</code></td><td><code>~/Desktop/P4next-takes</code></td><td>Where <code>ripcard</code> puts takes.</td></tr>
+    <tr><td><code>PULL_AGAIN</code>, <code>PULL_ALL_INPUTS</code></td><td>off</td><td><code>ripcard</code>: copy takes pulled before; also copy the silent inputs.</td></tr>
   </tbody>
 </table>
 
-<h2 id="recover">7. Recover a dead channel <span class="tag">ripcap</span></h2>
-<p>When the far-side audio never made it to disk, the words are still on screen as captions. <code>ripcap</code> OCRs every caption frame and stitches the rolling text into one attributed transcript. For Google Meet calls you rarely need it: <code>ripa</code> already reads the captions over any far-side silence of a minute or more and splices the other speakers' lines in as <code>[Caller]</code>, keeping the original as <code>parts/pre-caption-splice.txt</code>. It finds the captions by Meet's end-call button, so a moved window is fine there. Reach for <code>ripcap</code> to rebuild a whole recording by hand.</p>
-<pre><code>ripcap recording.mkv --region 120,1850,900,180
-# or:
-bash bin/stitch_captions.sh recording.mkv --region 120,1850,900,180</code></pre>
-<table>
-  <thead><tr><th>Flag</th><th>Default</th><th>What it does</th></tr></thead>
-  <tbody>
-    <tr><td><code>--region x,y,w,h</code></td><td>required</td><td>Caption crop. Required unless the input is a folder of pre-cropped frames.</td></tr>
-    <tr><td><code>--fps</code></td><td><code>1.5</code></td><td>How often to sample caption frames. Captions scroll slowly, so this is low on purpose.</td></tr>
-    <tr><td><code>--jobs</code></td><td><code>8</code></td><td>Parallel OCR workers.</td></tr>
-    <tr><td><code>--roster</code></td><td><code>speakers_roster.json</code></td><td>Names for attribution.</td></tr>
-    <tr><td><code>--out</code></td><td><code>transcripts/</code> next to the recording</td><td>Where the stitched transcript lands.</td></tr>
-  </tbody>
-</table>
-<div class="warn">For <code>ripcap</code>, the caption region is fixed for the whole run, so the Meet window has to stay in one place and size during the call. (The automatic backup in <code>ripa</code> does not have this limit.) If it moved or resized, a single region will not cover the recording, and you have to recover one layout at a time.</div>
+<h2 id="other">10. Other tools</h2>
+<p><code>ripv</code> renders a small H.265 <code>.mp4</code> of a call to watch back, about 40 times smaller than the <code>.mkv</code>. <code>ripcap</code> rebuilds a whole far side from captions given a fixed <code>--region x,y,w,h</code>; <code>ripa</code>'s automatic caption backup does not need a region. <code>rips</code> is the older naming tool that matches captions against a roster file; it stays for old recordings but is no longer needed.</p>
+<p>Recordings from before 2026-11-14 used seven Stream Deck keys for markers (<code>topic</code>, <code>action-me</code> and so on). <code>ripa</code> still reads those, and the report still renders them.</p>
 
-<h2 id="extras">8. Render video <span class="tag">ripv</span></h2>
-<p><code>ripv</code> is optional and only for when you want to watch a call back. Its audio is the master mix (Track 1), stereo as OBS recorded it, so you hear the call the way you heard it. An older three-track recording has no master, so there it rebuilds the audio into one stereo track, you on the left channel and the caller on the right. Either way it re-encodes the video to H.265 (much smaller than the source, and playable in QuickTime/IINA on macOS), and writes the <code>.mp4</code> into the recording's own <code>&lt;name&gt;/</code> folder, next to what <code>ripa</code> produces. The pipeline never needs it; it reads the <code>.mkv</code>.</p>
-<pre><code>ripv ~/calls/2026-07-24     # -> &lt;name&gt;/&lt;name&gt;.mp4, master mix audio</code></pre>
-
-<h2 id="faq">9. Good to know</h2>
+<h2 id="faq">11. Good to know</h2>
 <dl class="defn">
-  <dt>How do I run these without the aliases?</dt>
-  <dd>Every command maps to a script in <code>bin/</code>. Run <code>bash bin/&lt;script&gt;.sh ...</code> from the repo root. The mapping is in the commands table above.</dd>
-  <dt>What does it write to disk?</dt>
-  <dd><code>ripa</code> writes a <code>&lt;name&gt;/</code> folder per recording (merged transcript, combined MP3, and a <code>parts/</code> subfolder of per-track MP3s and transcripts). <code>ripv</code> adds a <code>&lt;name&gt;/&lt;name&gt;.mp4</code> to that same folder. <code>rips</code> writes <code>frames/</code> and <code>speakers.json</code> and edits the transcript in place. <code>ripcap</code> writes a stitched transcript. Your original recording is never modified.</dd>
-  <dt>Is it safe to re-run?</dt>
-  <dd>Yes. <code>ripa</code> skips any recording that already has a transcript, so re-running a folder only picks up new files. Delete a transcript if you want it rebuilt.</dd>
-  <dt>Why is there a repeated "Thank you" or "Amara.org" line in an old transcript?</dt>
-  <dd>Those are Whisper hallucinating on silence. The current pipeline strips them automatically inside any silent span, so fresh transcripts should be clean. If you see them, the audio there was dead, which is a hint to check for a dropout.</dd>
-  <dt>Do I have to say the marker names out loud?</dt>
-  <dd>No. You press the Stream Deck button silently; the sound goes onto Track 4 with monitoring off, so nobody on the call hears it. Only the <code>[MARKER]</code> line appears in the transcript.</dd>
+  <dt>Is it safe to rerun?</dt>
+  <dd>Yes. <code>ripa</code> skips any recording that already has a transcript, so rerunning a folder only picks up new files. Delete a transcript to rebuild it.</dd>
+  <dt>Why are some far-side lines still "Caller"?</dt>
+  <dd>No name won clearly: captions were off, Meet was not on screen, or people overlapped. <code>parts/speaker-names.json</code> shows the votes.</dd>
+  <dt>Who is "(second voice)"?</dt>
+  <dd>A second voice on one person's connection, often a voice demo they played. On the 2026-11-16 weekly it was Ed's game, which Deepgram split out from Ed.</dd>
+  <dt>Do people on the call hear the marker?</dt>
+  <dd>No. Pad A plays on the P4next's pads channel, which goes to OBS Track 4 and the card, never to Meet.</dd>
   <dt>Does anything leave my machine?</dt>
-  <dd>No. Whisper and tesseract run locally. There are no accounts and no uploads.</dd>
+  <dd>Each track's audio goes to Deepgram for transcription, with <code>mip_opt_out=true</code> on every request. Caption reading, naming, frames and the report all run locally. <code>TRANSCRIBER=whisper</code> keeps transcription local too.</dd>
+  <dt>How long does it take?</dt>
+  <dd>Transcription takes seconds. For an hour of 4K call, extracting tracks and reading captions take a few minutes each, and they run at the same time.</dd>
 </dl>
 
 <hr class="soft">
-<p class="updated">Companion guide to casting-call. Setup of the recording rig is in <code>docs/setup-guide.html</code>. If the tool behaves differently from this guide, the code is the source of truth.</p>
-
+<p class="updated">Updated 2026-11-16. Companion to <code>docs/setup-guide.html</code> (building the rig) and <code>docs/pipeline-flow.html</code> (how the pieces connect). If the tool behaves differently from this guide, the code is the source of truth.</p>
 </body>
 </html>

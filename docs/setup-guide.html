@@ -140,8 +140,9 @@
 
 <p>Everything it takes to go from a fresh Mac to a working call-recording rig: install the tools,
 wire the Zoom PodTrak P4next, record a screen call as four audio tracks (a master mix, you, the far
-side, and a marker track) with the P4next's card as a backup, and turn it into a transcript with
-your flagged moments dropped in at the right spot. Follow it top to bottom the first time.</p>
+side, and a marker track) with the P4next's card as a backup, and turn it into a named transcript
+and a review page with your flagged moments dropped in at the right spot. Follow it top to bottom
+the first time. Day-to-day use is in <code>docs/user-guide.html</code>.</p>
 
 <p>Sections are tagged <span class="tag cli">terminal</span> when they are copy-paste commands
 (safe to hand to an agent) or <span class="tag gui">in the app</span> when they are clicks in OBS
@@ -157,28 +158,32 @@ computer audio (Meet, Slack, Zoom, everything the Mac plays), and Track 4 is sil
 pressed pad A, which plays a short clip that says "marker". At the same time the P4next writes every
 channel to its own microSD card with no Mac software in the path.</p>
 
-<p>After the call, one command splits the tracks, transcribes them, cleans up the junk Whisper
-invents on silence, and folds your presses in as <code>[MARKER] marker</code> lines with a
-full-resolution screen grab each. If an OBS track dropped, it fills the gap from the card take. If
-there is no card take, the Meet captions on screen are the backup.</p>
+<p>After the call, <code>ripcard</code> copies the card take off the P4next, you file the calls
+worth keeping, and <code>ripa</code> splits the tracks, transcribes them with Deepgram (whisper on
+this Mac is the fallback), names the far side from Meet's captions, and folds your presses in as
+<code>[MARKER] marker</code> lines with a full-resolution screen grab each. If an OBS track dropped,
+it fills the gap from the card take; with no card take, the Meet captions on screen are the backup.
+Then <code>/process-transcript</code> in Claude Code writes the review page.</p>
 
 <h2>Part 1: The command line <span class="tag cli">terminal</span></h2>
 
-<p>This whole part is safe to run start to finish. It installs the tools, pulls the repo, and
-regenerates the marker clip locally (the <code>.wav</code> files are gitignored, so they do not
+<p>This whole part is safe to run start to finish, apart from pasting your own Deepgram key. It
+installs the tools, pulls the repo, and regenerates the marker clip locally (the <code>.wav</code> files are gitignored, so they do not
 come down with the clone).</p>
 
 <pre><code># Homebrew, if this machine does not have it yet
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Tools: ffmpeg + whisper for audio, tesseract for the caption fallback, OBS
-brew install ffmpeg whisper-cpp tesseract
+# Tools: ffmpeg for audio, tesseract for reading Meet captions, whisper as the
+# transcription fallback, OBS; gum is optional (styled ripa and ripcard output)
+brew install ffmpeg tesseract whisper-cpp gum
 brew install --cask obs
 
-# Python deps (Homebrew's python3; --break-system-packages is required on it)
-pip3 install --break-system-packages pillow numpy pytesseract pytest
+# Python deps (Homebrew's python3; --break-system-packages is required on it).
+# rich is optional, for progress bars and the summary table.
+pip3 install --break-system-packages pillow numpy pytesseract pytest rich
 
-# Whisper model, ~3 GB, one time
+# Whisper model, ~3 GB, one time (only used when Deepgram is unavailable)
 mkdir -p ~/whisper-models
 curl -o ~/whisper-models/ggml-large-v3.bin -L \
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin?download=true'
@@ -192,9 +197,12 @@ curl -sL -o ~/whisper-models/ggml-silero-v5.1.2.bin \
 git clone https://github.com/samgutentag/casting-call.git ~/Developer/casting-call
 cd ~/Developer/casting-call
 
-# Your roster (real names stay local; this file is gitignored)
-cp speakers_roster.example.json speakers_roster.json
-# then edit speakers_roster.json: set "self" to your name, list the people you call
+# Deepgram key for transcription (the .env file is gitignored). Every request
+# ripa sends carries mip_opt_out=true. Without a key, ripa uses whisper.
+echo 'DEEPGRAM_API_KEY=your-key-here' >> .env
+
+# The /process-transcript Claude Code skill lives in this repo
+ln -sfn ~/Developer/casting-call/skills/process-transcript ~/.claude/skills/process-transcript
 
 # The marker clip (regenerated here; not committed). One clip, one word.
 # The P4next sound pads only accept 44.1 or 48 kHz WAV, so it is 48 kHz,
@@ -206,7 +214,7 @@ ffmpeg -loglevel error -i /tmp/_m.aiff -ar 48000 -ac 2 -c:a pcm_s24le \
   -af "apad=pad_dur=0.25" obs/marker-clips/MARKER.WAV -y
 rm -f /tmp/_m.aiff
 
-# Short names for the three commands you run after every call
+# Short names for the commands you run after every call
 cat >> ~/.zshrc <<'ALIASES'
 alias ripcard="bash ~/Developer/casting-call/bin/pull_card.sh"
 alias ripa="bash ~/Developer/casting-call/bin/extract_audio_stereo.sh"
@@ -216,7 +224,8 @@ ALIASES
 # Confirm the toolchain is sane
 python3 -m pytest -q</code></pre>
 
-<p>If the tests pass, the software side is done. The clip now lives at
+<p>If the tests pass, the software side is done. Far-side names come from Meet's captions, so
+there is no roster file to fill in. The clip now lives at
 <code>~/Developer/casting-call/obs/marker-clips/MARKER.WAV</code>, which goes onto P4next pad A in
 Part 3.</p>
 
@@ -242,6 +251,8 @@ P4next into the Mac over USB. Put a microSD card in it and leave it there.</li>
 <li>On the Mac, set both <strong>System Settings, Sound</strong> input and output to
 <code>ZOOM P4next</code>. In Meet, pick <code>ZOOM P4next</code> as mic and speaker. Meet uses USB
 channel 1, your mic.</li>
+<li>In Meet, turn captions on (<strong>CC</strong>) for every call. <code>ripa</code> reads the
+speaker name on each caption to put real names on the far side.</li>
 </ol>
 
 <p>Over USB the P4next hands the Mac these channels. Channels 11 and 12 leave out the computer audio
@@ -340,9 +351,11 @@ is now in <code>~/Desktop/P4next-takes/&lt;take&gt;/</code>. Move that take fold
 <pre><code>cd ~/Developer/casting-call
 bash bin/extract_audio_stereo.sh ~/calls/test
 cat ~/calls/test/*/*.txt</code></pre>
-You should see <code>[You]</code> and <code>[Caller]</code> lines, two <code>[MARKER] marker</code>
-lines where you pressed pad A, a PNG for each in <code>&lt;name&gt;/markers/</code>, and a header
-line saying the card lined up by the marker method.</li>
+You should see <code>[You]</code> and <code>[Caller]</code> lines (a test with no Meet call has
+no caption names), two <code>[MARKER] marker</code> lines where you pressed pad A, a PNG for each
+in <code>&lt;name&gt;/markers/</code>, header lines saying Deepgram transcribed both tracks, and a
+header line saying the card lined up by the marker method. The run ends with a table of step times
+and a <em>ready for review</em> line.</li>
 </ol>
 
 <p>If both presses come back, the card lines up, and nobody on the far side heard the pad, the rig
@@ -351,7 +364,8 @@ is done.</p>
 <h2>Part 6: The daily loop</h2>
 
 <ol>
-<li>Start recording in OBS and on the P4next, then <strong>press pad A once</strong> right away.
+<li>Turn on Meet captions. Start recording in OBS and on the P4next, then <strong>press pad A
+once</strong> right away.
 That first press is what lines the card up with the video to the millisecond. Press it again during
 the call whenever something matters.</li>
 <li>Stop both recorders. Drop the <code>.mkv</code> in a folder.</li>
@@ -361,7 +375,10 @@ copies every take not already pulled into <code>~/Desktop/P4next-takes/&lt;take&
 <code>Card ejected. Exit USB File Transfer on the P4next now.</code> Do that right away: while
 File Transfer is on, the P4next is not the Mac's audio device and you hear nothing from the
 computer. Nothing on the card is ever deleted or changed, and the unused MIC2 to MIC4 files stay
-on the card (<code>PULL_ALL_INPUTS=1</code> copies them too).</li>
+on the card (<code>PULL_ALL_INPUTS=1</code> copies them too). A progress line shows speed and
+time left. Every pulled take is listed in <code>~/Desktop/P4next-takes/.pulled</code>, so a take
+you have moved or deleted is never copied again (<code>PULL_AGAIN=1</code> ignores the list).
+Clear the card from the P4next menu now and then.</li>
 <li>Move the recordings that matter into their day folder,
 <code>~/Desktop/call_logs/&lt;yyyy-wNN&gt;/&lt;yyyy-mm-dd&gt;/</code>, and rename each <code>.mkv</code>
 to something you will recognize, say <code>2026-11-10-corey-sync.mkv</code>. Move its take folder
@@ -373,15 +390,18 @@ the two starts were, and refuses past 10 minutes. Use <code>mv</code> (or a Find
 disk) for the <code>.mkv</code>, which keeps the creation time that pairing reads.</li>
 <li><code>ripa &lt;day folder&gt;</code>, whenever you like. It reads each take where it sits and
 never moves it, and never reads the card or the <code>P4next-takes</code> inbox, which is only a
-staging area. That is the transcript, markers and all,
-ready to hand to an LLM, plus a health line per track saying whether OBS dropped anything and
-whether the card covered it.</li>
+staging area. It prints its six steps as <code>[1 of 6]</code> to <code>[6 of 6]</code>, sends both
+tracks to Deepgram at once while it reads caption frames in the background, names the far side, and
+ends with a table of step times, a health line per track (did OBS drop anything, did the card cover
+it), and the exact next command.</li>
+<li><code>/process-transcript &lt;call folder&gt;</code> in Claude Code. It writes
+<code>&lt;name&gt;-call.html</code>, with what you were asked to do and what is owed to you first,
+and opens it in Chrome. Nothing runs on a schedule: filing a call is what puts it in the
+pipeline.</li>
 <li>Optional, only when you want to watch it back:
 <code>ripv &lt;folder&gt;</code> renders a playable <code>.mp4</code>. With a card take its soundtrack
 is the card's stereo mix, lined up to the video; without one it is OBS Track 1. An
 <code>.mp4</code> rendered before <code>ripa</code> lined the card up is rendered again.</li>
-<li>Optional, to put real names on the far-side lines:
-<code>bash bin/extract_speakers.sh &lt;recording&gt; --region x,y,w,h --transcript &lt;transcript&gt;</code>.</li>
 </ol>
 
 <blockquote>
@@ -394,8 +414,8 @@ the first few presses and switches to the seven-clip parser when it hears one of
 <h2>Part 7: When an OBS track drops out</h2>
 
 <p>OBS audio capture can die mid-call and record silence from that point on, with no error in its
-log. The lines Whisper would have invented on that dead audio are stripped automatically, so the
-transcript does not fill up with fake "thank you" and "subtitles by" junk.</p>
+log. On a track that fell back to whisper, the lines whisper invents on dead audio are stripped
+automatically, so the transcript does not fill up with fake "thank you" and "subtitles by" junk.</p>
 
 <p><strong>With a card take</strong>, the gap is filled from the card. <code>ripa</code> lines the
 card up with the video (pad presses first, then speech, then the two clocks), and any stretch where
@@ -421,7 +441,7 @@ check off.</p>
 transcript has a gap. To rebuild a whole recording from a fixed caption region by hand:</p>
 <pre><code>bash bin/stitch_captions.sh &lt;recording&gt; --region x,y,w,h</code></pre>
 
-<p class="meta">casting-call · new-machine setup · 2026-11-14</p>
+<p class="meta">casting-call · new-machine setup · updated 2026-11-16 (Deepgram, caption names, ripcard)</p>
 <!-- ===== CONTENT END ===== -->
 
 <script>

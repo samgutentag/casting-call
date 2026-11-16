@@ -41,7 +41,8 @@
 # Flow per recording:
 #   extract each track -> detect silence -> transcribe (skip a dead track) ->
 #   weave by timestamp -> strip silence/junk hallucinations -> patch a far-side
-#   dropout from Meet captions -> markers -> relabel if a speakers.json exists.
+#   dropout from Meet captions -> name the far side from Meet captions ->
+#   markers -> relabel if a speakers.json exists.
 #
 # Usage: extract_audio_stereo.sh [directory] [whisper_model_path]
 # Output: <name>/<name>.txt (merged) + <name>/<name>.mp3 (combined) + <name>/parts/<track>.{mp3,txt}
@@ -74,6 +75,12 @@ CAPTION_BACKUP="${CAPTION_BACKUP:-1}"
 # even when its track is not silent: background music on a dead capture keeps
 # the level up, so silence detection alone never fires (2026-10-20 Corey call).
 CAPTION_TEXT_GAP_SECONDS=120
+
+# Caption names. With a video, Meet's caption speaker names are read over the
+# whole call (one frame every 2 s, about 3 minutes for a 30-minute call) and
+# each [Caller] line whose caption words clearly belong to one person gets that
+# name. No roster. Unsure lines stay [Caller]. CAPTION_NAMES=0 skips it.
+CAPTION_NAMES="${CAPTION_NAMES:-1}"
 
 MARKER_MODE="${MARKER_MODE:-auto}"
 
@@ -477,6 +484,22 @@ for input_file in "${recordings[@]}"; do
                 "$input_file" "$txt_out" --windows "$caption_windows" \
                 --parts "$parts_dir" --caller-label "$CALLER_LABEL" | sed 's/^/  → /' )
         fi
+    fi
+
+    # Caption names: rename [Caller] lines from Meet's caption speaker labels.
+    # Never fails the run: the transcript is only rewritten once naming finishes.
+    if [ "$CAPTION_NAMES" != "1" ]; then
+        echo "  ⏭  Caption names off (CAPTION_NAMES=0); far side stays [${CALLER_LABEL}]"
+    elif ! has_stream "$input_file" v:0; then
+        echo "  ⏭  Caption names: no video in this recording; far side stays [${CALLER_LABEL}]"
+    elif ! command -v tesseract &>/dev/null || [ -z "$(ocr_python)" ]; then
+        echo "  ⚠  Caption names need tesseract + numpy/pillow/pytesseract; far side stays [${CALLER_LABEL}]"
+        echo "     brew install tesseract && pip3 install pytesseract --break-system-packages"
+    else
+        echo "  → Reading Meet caption names for the far side..."
+        ( cd "$REPO_DIR" && "$(ocr_python)" -m casting_call.names \
+            "$input_file" "$txt_out" --parts "$parts_dir" \
+            --caller-label "$CALLER_LABEL" 2>&1 | sed 's/^/  → /' )
     fi
 
     # The marker track (Track 4 now, Track 3 before 2026-10-08): pre-canned

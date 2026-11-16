@@ -19,7 +19,12 @@ constant, and has animated diagrams of the three core mechanisms.
 
 **1. Transcribe** (`ripa`). Separate the audio tracks, run whisper-cpp on each, merge
 by timestamp into `[h:mm:ss] [You] / [Caller]` lines. Every remote participant lands on
-the far-side track as one undifferentiated `Caller`.
+the far-side track as one undifferentiated `Caller`. When the recording has video of a
+Meet call, `ripa` then reads Meet's caption speaker names (no roster) and renames each
+`Caller` line whose caption words clearly belong to one person, e.g. `[Corey Weathers]`.
+Unsure lines stay `Caller`. The unnamed transcript is kept in `parts/pre-names.txt`, the
+names and every line's votes in `parts/speaker-names.json`. Any label other than `You`
+or `MARKER` is the far side.
 
 **2. Attribute speakers** (`rips`). Meet's on-screen captions already say who is
 speaking. Sample the video, OCR the caption band, fuzzy-match names against your local
@@ -74,7 +79,7 @@ Clip generation and P4next pad setup are in the [setup guide](docs/setup-guide.h
 
 | Alias | Script | Does |
 |---|---|---|
-| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + patch far-side dropouts from Meet captions + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording; `MARKER_MODE=single\|legacy` forces the marker rig; `CAPTION_BACKUP=0` skips the caption check |
+| `ripa` | `extract_audio_stereo.sh` | extract + transcribe + patch far-side dropouts from Meet captions + auto-relabel if a timeline exists. `MARKER_TRACK=<n>` reads markers from track n for a misrouted recording; `MARKER_MODE=single\|legacy` forces the marker rig; `CAPTION_BACKUP=0` skips the caption check; `CAPTION_NAMES=0` skips naming the far side from caption names |
 | `rips` | `extract_speakers.sh` | caption OCR → speaker timeline → relabel transcript |
 | `ripcap` | `stitch_captions.sh` | captions → full transcript (dead-channel fallback) |
 | `ripv` | `convert_video.sh` | re-encode to a smaller H.265 playable copy, audio is the master mix (legacy files: you=L / caller=R) |
@@ -106,7 +111,8 @@ time instead. Press pad A once right after starting both recorders.
 
 ```bash
 # ...record the call with OBS (multi-track: mic, far side, markers)...
-ripa ~/calls/2026-07-06                            # transcribe everything in the folder
+ripa ~/calls/2026-07-06                            # transcribe; names far-side lines from Meet captions
+# only if you want roster-matched names instead:
 rips recording.mkv --region 120,1850,900,180 \
      --transcript recording/recording.txt          # put real names on the Caller lines
 ```

@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from casting_call.transcript import parse_transcript, render_transcript
+from casting_call.transcript import MARK_LABEL, parse_transcript, render_transcript
 
 # Marker rules, in priority order: the first type whose keyword appears anywhere
 # in the whisper output wins. Order is load-bearing, not cosmetic. The two action
@@ -64,9 +64,9 @@ LEGACY_TYPES = [mtype for mtype, _ in MARKER_RULES if mtype != SINGLE_TYPE]
 # digest.py groups by this.
 MARKER_TYPES = [mtype for mtype, _ in MARKER_RULES]
 
-# Label for embedded marker lines. Deliberately not "MARK" — that collides with a
-# real person named Mark once Caller lines get relabeled with names.
-MARK_LABEL = "MARKER"
+# Label for embedded marker lines (MARK_LABEL, defined in transcript.py) is
+# deliberately not "MARK": that collides with a real person named Mark once
+# Caller lines get relabeled with names.
 
 
 def match_marker(text):

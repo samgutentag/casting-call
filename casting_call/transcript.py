@@ -2,6 +2,19 @@ import re
 
 LINE_RE = re.compile(r'^\[(\d+):(\d+):(\d+)\] \[([^\]]+)\] (.*)$')
 
+SELF_LABEL = 'You'
+MARK_LABEL = 'MARKER'
+
+
+def is_far_side(label):
+    """True for any line someone on the far side said.
+
+    The far side starts as [Caller] and may be renamed (casting_call.names, or
+    a roster relabel), so anything that is not Sam's mic or a marker press is
+    the far side, whatever it is called.
+    """
+    return label not in (SELF_LABEL, MARK_LABEL)
+
 
 def parse_transcript(text):
     """Parse '[h:mm:ss] [Label] text' lines into dicts with seconds 't'."""

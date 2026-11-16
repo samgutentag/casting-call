@@ -37,7 +37,7 @@ from pathlib import Path
 from casting_call.asides import asides_from_entries
 from casting_call.frames import load_manifest
 from casting_call.markers import MARK_LABEL, MARKER_TYPES, SINGLE_TYPE
-from casting_call.transcript import parse_transcript
+from casting_call.transcript import is_far_side, parse_transcript
 
 # Context around a single-type `marker` press. One button means the press says
 # nothing about what the moment was, so the summary has to come from the talk
@@ -95,10 +95,13 @@ def window_for(marker, speech, window_seconds):
     """Speech lines within +/- window_seconds of the marker (bounds inclusive).
 
     `speech` is already marker-free (see split_markers) and time-ordered, so the
-    result is the conversation around the press. Each line gets a 'tstr' added.
+    result is the conversation around the press. Each line gets a 'tstr' added,
+    and 'side' ('you' or 'far'), so the page never has to know that a far-side
+    line may be labeled Caller or with a person's name.
     """
     lo, hi = marker["t"] - window_seconds, marker["t"] + window_seconds
-    return [dict(e, tstr=format_ts(e["t"])) for e in speech if lo <= e["t"] <= hi]
+    return [dict(e, tstr=format_ts(e["t"]), side="far" if is_far_side(e["label"]) else "you")
+            for e in speech if lo <= e["t"] <= hi]
 
 
 def frame_data_uri(video_path, t):

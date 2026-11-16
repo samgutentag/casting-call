@@ -175,3 +175,12 @@ def test_ocr_variants_of_you_are_self():
         assert is_self_label(lab), lab
     for lab in ("Ed", "Yuki Tanaka", "Corey", "Naomi", "Yui", "Yon"):
         assert not is_self_label(lab), lab
+
+
+def test_rerun_from_pre_names_keeps_markers_added_later():
+    from casting_call.names import carry_markers
+    pre = [{"t": 1, "label": "You", "text": "hi"}, {"t": 9, "label": "Caller", "text": "yo"}]
+    current = pre + [{"t": 5, "label": "MARKER", "text": "marker"}]
+    out = carry_markers(pre, current)
+    assert [e["label"] for e in out] == ["You", "MARKER", "Caller"]
+    assert carry_markers(current, current) == current

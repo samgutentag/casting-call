@@ -32,7 +32,7 @@ from pathlib import Path
 
 from .roster import Roster
 from .transcript import (
-    LINE_RE, SELF_LABEL, is_far_side, parse_transcript, render_transcript,
+    LINE_RE, MARK_LABEL, SELF_LABEL, is_far_side, parse_transcript, render_transcript,
 )
 
 FPS = 0.5             # a caption turn stays on screen for many seconds; 2 s misses none
@@ -310,6 +310,17 @@ def save_frames(path, frames):
         {'t': t, 'found': found, 'lines': lines} for t, lines, found in frames]}))
 
 
+def carry_markers(entries, current):
+    """entries plus every [MARKER] line in current that entries lacks, in time order."""
+    have = {(e['t'], e.get('text')) for e in entries if e['label'] == MARK_LABEL}
+    extra = [e for e in current if e['label'] == MARK_LABEL and (e['t'], e.get('text')) not in have]
+    if not extra:
+        return entries
+    merged = [dict(e, _m=0) for e in entries] + [dict(e, _m=1) for e in extra]
+    merged.sort(key=lambda e: (e['t'], e['_m']))
+    return [{k: v for k, v in e.items() if k != '_m'} for e in merged]
+
+
 def main(argv=None):
     import argparse
     import time
@@ -329,6 +340,10 @@ def main(argv=None):
     # A rerun starts from the unnamed transcript, not from its own output.
     source = pre if pre.exists() else txt
     entries = parse_transcript(source.read_text(encoding='utf-8'))
+    if source is pre and txt.exists():
+        # ripa embeds markers after naming, so they exist only in the current
+        # transcript; a rerun from pre-names.txt must carry them over.
+        entries = carry_markers(entries, parse_transcript(txt.read_text(encoding='utf-8')))
     n_caller = sum(e['label'] == args.caller_label for e in entries)
     if not n_caller:
         print(f'no [{args.caller_label}] lines, nothing to name')

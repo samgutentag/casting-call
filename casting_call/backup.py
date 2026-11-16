@@ -267,9 +267,9 @@ def _ocr_frame(path):
     return caption_lines(tsv, anchor[2] / HANGUP_WIDTH_4K, gray), True
 
 
-def read_window(video, start, end, roster, fps=FPS, jobs=8):
-    """Timed caption lines for [start, end) of the recording, plus stats."""
-    frames, seen, anchored = [], 0, 0
+def ocr_frames(video, start, end, fps=FPS, jobs=8):
+    """[(t, lines, found)] for one frame every 1/fps seconds over [start, end)."""
+    frames = []
     with tempfile.TemporaryDirectory(prefix='captions-') as tmp:
         t0 = start
         while t0 < end:
@@ -285,14 +285,18 @@ def read_window(video, start, end, roster, fps=FPS, jobs=8):
             with ThreadPoolExecutor(max_workers=jobs) as pool:
                 results = list(pool.map(_ocr_frame, paths))
             for i, (lines, found) in enumerate(results):
-                frames.append((t0 + i / fps, lines))
-                seen += 1
-                anchored += found
+                frames.append((t0 + i / fps, lines, found))
             t0 += dur
+    return frames
 
+
+def read_window(video, start, end, roster, fps=FPS, jobs=8):
+    """Timed caption lines for [start, end) of the recording, plus stats."""
+    frames = ocr_frames(video, start, end, fps, jobs)
     timed = [(t, frame_tokens(lines, roster, keep_last=(i == len(frames) - 1)))
-             for i, (t, lines) in enumerate(frames)]
-    return stitch_timed(timed, roster), {'frames': seen, 'anchored': anchored}
+             for i, (t, lines, _) in enumerate(frames)]
+    stats = {'frames': len(frames), 'anchored': sum(found for _, _, found in frames)}
+    return stitch_timed(timed, roster), stats
 
 
 # --- CLI -------------------------------------------------------------------

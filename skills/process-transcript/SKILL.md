@@ -264,8 +264,12 @@ acts on sits above the fold; everything else is in one closed disclosure.
      `marker` press; on a legacy call `important`, `quote`, `video` and the like)
      with its summary, a frame thumbnail when there is one, and a seek button.
 - **Below the fold:** one native `<details class="more">`, closed by default and
-  working without JS, holding Open questions, Owner unclear, and every section
-  with its items. Its summary line counts what is inside.
+  working without JS, holding Open questions, Owner unclear, **Who's speaking**
+  (one labeled row per person from the transcript line times, talk share, and how
+  the caption names were found from `parts/speaker-names.json`), **Transcript by
+  speaker** (one column per person, four visible, more scroll sideways, ▶ per
+  turn), and every section with its items. Its summary line counts what is inside.
+  Rows and columns carry the person's name, never color alone: Sam is colorblind.
 - **Evidence folds.** Each item's context quotes and its screenshot go inside a
   closed `<details class="ev">`. The `<summary>` says what is in it: `6 lines`, or
   `6 lines + screen` for a video item. Omit the `<details>` when an item has no

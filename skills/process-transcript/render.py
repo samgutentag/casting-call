@@ -241,6 +241,7 @@ def rebuild_rollup(digest):
 SELF_NAMES = ("You", "Sam", "me")
 # The unnamed far-side label, from before Meet captions supplied names.
 UNNAMED = "Caller"
+SPAN_CAP = 15  # seconds; a whisper line longer than this is usually a pause before the next
 # A one-liner that already says who asked is left alone, so an older lang file
 # that wrote "Corey asked you to ..." into the text does not get it twice.
 ALREADY_PHRASED = re.compile(
@@ -381,6 +382,127 @@ def summary_path(digest, out):
     return Path(out).with_name(f"{name}-summary.json")
 
 
+def speaking_spans(lines, duration):
+    """Each transcript line runs until the next line starts, capped, since whisper
+    lines carry only a start time."""
+    spans = []
+    for n, ln in enumerate(lines):
+        nxt = lines[n + 1]["t"] if n + 1 < len(lines) else duration
+        end = min(max(nxt, ln["t"] + 1), ln["t"] + SPAN_CAP)
+        spans.append((ln["label"], ln["t"], end))
+    return spans
+
+
+def speaker_order(talk):
+    """Sam first, then named people by talk time, unnamed Caller last."""
+    named = sorted((k for k in talk if k not in ("You", UNNAMED)), key=lambda k: -talk[k])
+    return ((["You"] if "You" in talk else []) + named
+            + ([UNNAMED] if UNNAMED in talk else []))
+
+
+def transcript_columns_html(lines, duration, audio):
+    """The transcript with one column per speaker, for review. Consecutive lines
+    from one speaker merge into one cell, so the grid stays readable."""
+    if not lines:
+        return ""
+    talk = {}
+    for label, a, b in speaking_spans(lines, duration or lines[-1]["t"] + 1):
+        talk[label] = talk.get(label, 0) + (b - a)
+    order = speaker_order(talk)
+    col = {k: n + 1 for n, k in enumerate(order)}
+    turns = []
+    for ln in lines:
+        if turns and turns[-1]["label"] == ln["label"]:
+            turns[-1]["text"] += " " + ln["text"]
+        else:
+            turns.append(dict(ln))
+    head = "".join(f'<div class="th" style="grid-column:{col[k]}">{e(display_name(k))}</div>'
+                   for k in order)
+    cells = "".join(
+        f'<div class="tc{" me" if tn["label"] == "You" else ""}" '
+        f'style="grid-column:{col[tn["label"]]};grid-row:{n + 2}">'
+        f'{ts_button(tn, audio)} {e(tn["text"])}</div>'
+        for n, tn in enumerate(turns))
+    hint = " Scroll sideways for more people." if len(order) > 4 else ""
+    return ('  <section class="card" id="columns">\n    <h2>Transcript by speaker</h2>\n'
+            f'    <p class="lede">One column per person, in time order.{hint}</p>\n'
+            f'    <div class="tcols-wrap"><div class="tcols" style="--n:{len(order)}">'
+            f'{head}{cells}</div></div>\n  </section>\n')
+
+
+def display_name(label):
+    return "Sam (you)" if label == "You" else label
+
+
+def speaking_html(lines, duration, transcript, audio):
+    if not lines or not duration:
+        return ""
+    spans = speaking_spans(lines, duration)
+    talk = {}
+    for label, a, b in spans:
+        talk[label] = talk.get(label, 0) + (b - a)
+    count = {}
+    for ln in lines:
+        count[ln["label"]] = count.get(ln["label"], 0) + 1
+    order = speaker_order(talk)
+    total = sum(talk.values()) or 1
+    W, RH, LW = 1000, 34, 200
+
+    def x(t):
+        return t / duration * W
+
+    rows = []
+    for n, label in enumerate(order):
+        y = 6 + n * RH
+        fill = "var(--mine)" if label == "You" else "var(--fg)"
+        rows.append(f'<text x="{-LW + 4}" y="{y + 15}" class="rl">{e(display_name(label))}</text>'
+                    f'<line x1="0" y1="{y + RH - 5}" x2="{W}" y2="{y + RH - 5}" class="rule"/>')
+        rows.append("".join(
+            f'<rect x="{x(a):.1f}" y="{y}" width="{max(1.2, x(b) - x(a)):.1f}" height="{RH - 14}" '
+            f'rx="1.5" fill="{fill}" opacity="{1 if label == "You" else .75}"><title>{hms(a)}</title></rect>'
+            for lab, a, b in spans if lab == label))
+    axis_y = 6 + len(order) * RH
+    step = 5 if duration > 900 else 1
+    ticks = "".join(
+        f'<line x1="{x(m * 60):.1f}" y1="{axis_y}" x2="{x(m * 60):.1f}" y2="{axis_y + 5}" class="rule"/>'
+        f'<text x="{x(m * 60):.1f}" y="{axis_y + 18}" text-anchor="middle" class="tick">{m}m</text>'
+        for m in range(0, int(duration // 60) + 1, step))
+    click = (' onclick="speakSeek(event,this)" style="cursor:pointer"' if audio else "")
+    svg = (f'<svg class="speaking" viewBox="{-LW} 0 {W + LW + 10} {axis_y + 26}" role="img" '
+           f'aria-label="One row per person, bars where they speak" data-dur="{duration}" '
+           f'data-lw="{LW}"{click}>' + "".join(rows) + ticks + "</svg>")
+    share = "\n".join(
+        f'      <tr><td>{e(display_name(k))}</td><td>{length_str(talk[k])}</td>'
+        f'<td>{talk[k] / total:.0%}</td><td>{count.get(k, 0)}</td></tr>' for k in order)
+    table = ('    <table class="share"><thead><tr><th>Person</th><th>Talk time</th>'
+             '<th>Share</th><th>Lines</th></tr></thead><tbody>\n' + share + "\n    </tbody></table>")
+
+    naming = '    <p class="lede">No caption naming ran on this call, so the far side stays "Caller".</p>'
+    names_json = Path(transcript).parent / "parts" / "speaker-names.json" if transcript else None
+    if names_json and names_json.exists():
+        try:
+            nd = json.loads(names_json.read_text(encoding="utf-8"))
+            left = sum(1 for ln in nd.get("lines", []) if not ln.get("name"))
+            items = "\n".join(
+                f'      <li><b class="nm">{e(n)}</b> &middot; {v.get("lines", 0)} lines, read as '
+                + ", ".join(f'{e(s)} ({c})' for s, c in sorted(v.get("spellings", {}).items(),
+                                                              key=lambda kv: -kv[1]))
+                + "</li>" for n, v in nd.get("names", {}).items())
+            naming = ('    <h3>How names were found</h3>\n'
+                      f'    <p class="lede">Read from Meet captions in {nd.get("frames_with_meet", 0)} of '
+                      f'{nd.get("frames", 0)} sampled frames. {left} far-side lines had no clear '
+                      'winner and stay "Caller".</p>\n    <ul class="names">\n' + items + "\n    </ul>")
+        except (OSError, ValueError) as err:
+            naming = f'    <p class="lede">Could not read speaker-names.json: {e(str(err))}</p>'
+    script = ("<script>function speakSeek(ev,svg){var r=svg.getBoundingClientRect(),"
+              "vb=svg.viewBox.baseVal,x=(ev.clientX-r.left)/r.width*vb.width+vb.x;"
+              "if(x<0)return;seek(Math.round(x/1000*(+svg.dataset.dur)))}</script>")
+    return ('  <section class="card" id="speaking">\n    <h2>Who\'s speaking</h2>\n'
+            '    <p class="lede">One row per person, from the transcript line times. '
+            + ("Click a row to play from there." if audio else "") + '</p>\n'
+            f'    <div class="speakwrap">{svg}</div>\n{table}\n{naming}\n    {script}\n  </section>\n')
+
+
 def render_call(digest, L, out, transcript=None, digest_path=None):
     L.ONE, one_people = split_one(getattr(L, "ONE", {}))
     if not hasattr(L, "TOPICS"):
@@ -493,6 +615,14 @@ def render_call(digest, L, out, transcript=None, digest_path=None):
         if got:
             more.append(block(key, head, got, plain_li, cls))
             nav_more.append((key, head))
+    speak = speaking_html(lines, duration, transcript, audio)
+    if speak:
+        more.append(speak)
+        nav_more.append(("speaking", "Who's speaking"))
+    cols = transcript_columns_html(lines, duration, audio)
+    if cols:
+        more.append(cols)
+        nav_more.append(("columns", "Transcript by speaker"))
     names = section_names(digest, L)
     for n, (s, (name, lede)) in enumerate(zip(digest["sections"], names), 1):
         sid, body = f"s{n}", []

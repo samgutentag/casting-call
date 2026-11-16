@@ -145,6 +145,27 @@
                           align-items: baseline; padding: .3rem 0 .3rem .7rem;
                           border-left: 3px solid var(--line); margin: 0 0 .4rem; }
   @media (max-width: 640px) { .card .decisions li { grid-template-columns: 1fr; gap: .15rem; } }
+  /* Who's speaking: one labeled row per person, so it reads without color. */
+  .speakwrap { overflow-x: auto; }
+  .speaking { width: 100%; min-width: 640px; height: auto; display: block; }
+  .speaking .rl { font-size: 17px; font-weight: 600; fill: var(--fg); }
+  .speaking .tick { font-size: 14px; fill: var(--muted); }
+  .speaking .rule { stroke: var(--line); }
+  table.share { border-collapse: collapse; margin: .8rem 0; font-size: .92rem; }
+  table.share th, table.share td { text-align: left; padding: .3rem .9rem .3rem 0;
+            border-bottom: 1px solid var(--line); }
+  table.share th { color: var(--muted); font-weight: 500; font-size: .8rem; }
+  ul.names li { display: block; margin: .2rem 0; }
+  /* Transcript by speaker: four columns fit, more scroll sideways. */
+  .tcols-wrap { overflow-x: auto; max-height: 80vh; overflow-y: auto; border: 1px solid var(--line);
+            border-radius: 6px; }
+  .tcols { display: grid; grid-template-columns: repeat(var(--n), calc((100% - 3 * .8rem) / 4));
+            column-gap: .8rem; row-gap: .35rem; padding: 0 .6rem .6rem; }
+  .tcols .th { position: sticky; top: 0; background: var(--bg); font-weight: 600;
+            padding: .5rem 0; border-bottom: 1px solid var(--line); grid-row: 1; z-index: 1; }
+  .tcols .tc { font-size: .9rem; line-height: 1.45; }
+  .tcols .tc.me { color: var(--muted); }
+  .tcols .tc .ts { margin-right: .3rem; }
 </style>
 </head>
 <body>

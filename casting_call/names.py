@@ -47,10 +47,13 @@ PAD = 1.0             # seconds either side of a line that still count as its wo
 MAX_LINE = 12         # a line with no next line still ends this many seconds on
 MIN_VOTES = 5         # caption words a line needs before a vote means anything
 MAJORITY = 0.7        # share of those words one name needs to win the line
-# With Deepgram diarization, a whole speaker is named at once, so the bar is
-# higher: one wrong call renames every line that voice spoke.
+# With Deepgram diarization, a whole speaker is named at once, so one wrong
+# call renames every line that voice spoke. A clear winner, not a supermajority:
+# on 2026-11-16 three real people won at 69-78% with the rest spread thin, since
+# captions lag and crosstalk smears words onto whoever spoke next.
 SPEAKER_MIN_VOTES = 20
-SPEAKER_MAJORITY = 0.8
+SPEAKER_MAJORITY = 0.6
+SPEAKER_LEAD = 3.0     # winner's share at least this many times the runner-up's
 ORDINALS = ['second', 'third', 'fourth', 'fifth']
 
 
@@ -233,8 +236,10 @@ def name_speakers(speakers, words, people):
     won = {}
     for spk in sorted(talk):
         total = sum(votes[spk].values())
-        top = votes[spk].most_common(1)
-        if top and total >= SPEAKER_MIN_VOTES and top[0][1] / total >= SPEAKER_MAJORITY:
+        top = votes[spk].most_common(2)
+        lead_ok = len(top) < 2 or top[0][1] >= SPEAKER_LEAD * top[1][1]
+        if (top and total >= SPEAKER_MIN_VOTES and top[0][1] / total >= SPEAKER_MAJORITY
+                and lead_ok):
             won[spk] = top[0][0]
         elif single:
             won[spk] = single

@@ -32,6 +32,23 @@ from pathlib import Path
 from casting_call import card
 
 
+LEDGER = ".pulled"
+
+
+def read_ledger(inbox):
+    """Takes already pulled once, so moving or deleting a take from the inbox
+    does not make the next pull copy it again."""
+    try:
+        return {ln.strip() for ln in (Path(inbox) / LEDGER).read_text().splitlines() if ln.strip()}
+    except FileNotFoundError:
+        return set()
+
+
+def add_to_ledger(inbox, take):
+    with open(Path(inbox) / LEDGER, "a", encoding="utf-8") as f:
+        f.write(take + "\n")
+
+
 def plan_take(files, dest, all_inputs=False):
     """[(src, target)] still to copy for one take: wanted files whose inbox copy
     is missing or a different size."""
@@ -69,18 +86,24 @@ def _mb(n):
     return f"{n / 1e6:.1f} MB"
 
 
-def pull_takes(volume, inbox, all_inputs=False, out=print):
-    """Copy every take not already in the inbox. Returns the number of failed files."""
+def pull_takes(volume, inbox, all_inputs=False, out=print, again=False):
+    """Copy every take not pulled before. Returns the number of failed files."""
     start = time.monotonic()
     takes = card.card_takes(volume)
+    Path(inbox).mkdir(parents=True, exist_ok=True)
+    done = set() if again else read_ledger(inbox)
     failures, total = 0, 0
     if not takes:
         out(f"no takes found on {volume}")
     for take in sorted(takes):
+        if take in done:
+            out(f"  {take}: pulled before, skipped")
+            continue
         dest = Path(inbox) / take
         todo = plan_take(takes[take], dest, all_inputs)
         if not todo:
             out(f"  {take}: already pulled, skipped")
+            add_to_ledger(inbox, take)
             continue
         try:
             dest.mkdir(parents=True, exist_ok=True)
@@ -98,6 +121,8 @@ def pull_takes(volume, inbox, all_inputs=False, out=print):
                 failures += 1
         total += size
         out(f"  {take}: {len(todo)} file(s), {_mb(size)}")
+        if not any(not tg.exists() for _, tg in todo):
+            add_to_ledger(inbox, take)
     out(f"pulled {_mb(total)} in {time.monotonic() - start:.1f} s into {inbox}")
     return failures
 
@@ -108,11 +133,13 @@ def main(argv=None):
     ap.add_argument("inbox")
     ap.add_argument("--all-inputs", action="store_true",
                     help="also copy MIC2 to MIC4 (unused, silent inputs)")
+    ap.add_argument("--again", action="store_true",
+                    help="ignore the record of earlier pulls and copy every take again")
     args = ap.parse_args(argv)
     if not Path(args.volume).is_dir():
         print(f"card not mounted at {args.volume}", file=sys.stderr)
         return 2
-    return 1 if pull_takes(args.volume, args.inbox, args.all_inputs) else 0
+    return 1 if pull_takes(args.volume, args.inbox, args.all_inputs, again=args.again) else 0
 
 
 if __name__ == "__main__":

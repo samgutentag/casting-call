@@ -40,7 +40,7 @@ def test_second_pull_skips_takes_with_matching_sizes(tmp_path):
     pull.pull_takes(vol, inbox, out=lambda s: None)
     lines = []
     assert pull.pull_takes(vol, inbox, out=lines.append) == 0
-    assert any("already pulled" in l for l in lines)
+    assert any("pulled before" in l for l in lines)
 
 
 def test_wrong_size_copy_is_pulled_again(tmp_path):
@@ -81,3 +81,23 @@ def test_failed_copy_is_counted(tmp_path, monkeypatch):
 
 def test_unmounted_card_exits_nonzero(tmp_path):
     assert pull.main([str(tmp_path / "missing"), str(tmp_path / "inbox")]) == 2
+
+
+def test_take_moved_out_of_inbox_is_not_pulled_again(tmp_path):
+    vol = _fake_card(tmp_path / "card")
+    inbox = tmp_path / "inbox"
+    pull.pull_takes(vol, inbox, out=lambda s: None)
+    shutil.move(str(inbox / TAKE), str(tmp_path / "call.card"))
+    lines = []
+    assert pull.pull_takes(vol, inbox, out=lines.append) == 0
+    assert not (inbox / TAKE).exists()
+    assert any("pulled before" in l for l in lines)
+
+
+def test_again_ignores_the_ledger(tmp_path):
+    vol = _fake_card(tmp_path / "card")
+    inbox = tmp_path / "inbox"
+    pull.pull_takes(vol, inbox, out=lambda s: None)
+    shutil.rmtree(inbox / TAKE)
+    assert pull.pull_takes(vol, inbox, out=lambda s: None, again=True) == 0
+    assert (inbox / TAKE / f"{TAKE}_MIC1.wav").exists()

@@ -9,6 +9,7 @@
 #   CARD_VOLUME      mounted card (default /Volumes/P4NEXT_SD)
 #   CARD_INBOX       where takes go (default ~/Desktop/P4next-takes)
 #   PULL_ALL_INPUTS  1 also copies MIC2 to MIC4 (unused, digital silence)
+#   PULL_AGAIN       1 copies takes pulled before (normally skipped via <inbox>/.pulled)
 #
 # Nothing on the card is deleted or changed. Exits non-zero, and leaves the
 # card mounted, if any copy fails.
@@ -27,7 +28,8 @@ if ! mkdir -p "$CARD_INBOX"; then
 fi
 
 flags=()
-[ "${PULL_ALL_INPUTS:-0}" = "1" ] && flags=(--all-inputs)
+[ "${PULL_ALL_INPUTS:-0}" = "1" ] && flags+=(--all-inputs)
+[ "${PULL_AGAIN:-0}" = "1" ] && flags+=(--again)
 
 echo "Pulling takes from $CARD_VOLUME into $CARD_INBOX..."
 ( cd "$REPO_DIR" && python3 -m casting_call.pull "$CARD_VOLUME" "$CARD_INBOX" "${flags[@]}" )

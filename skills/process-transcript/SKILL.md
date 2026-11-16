@@ -1,6 +1,6 @@
 ---
 name: process-transcript
-description: Use when Sam hands over one or more casting-call transcript paths (a .txt file or a directory) to turn a recorded call into one browsable HTML report — a summary, a roll-up of what he owes and what the far side owes, then the call cut into subject sections with every marker press (the single P4next pad, or the older seven Stream Deck keys) and every phrase he spoke into his muted mic ("action item", "notes notes notes") filed into the section it happened in, each with click-to-audio seek and the screen grab taken at each press. Also runs on /process-transcript. Replaces the old marker-digest skill.
+description: Use when Sam hands over one or more casting-call transcript paths (a .txt file or a directory) to turn a recorded call into one browsable HTML report: what he was asked to do and what is owed to him first, then a summary, decisions and the marked moments, then (behind one Show more) the call cut into subject sections with every marker press (the single P4next pad, or the older seven Stream Deck keys) and every phrase he spoke into his muted mic ("action item", "notes notes notes") filed into the section it happened in, each with click-to-audio seek and the screen grab taken at each press. Also runs on /process-transcript. Replaces the old marker-digest skill.
 ---
 
 ## Process Transcript
@@ -89,6 +89,7 @@ The JSON gives you:
 | `name`, `audio_path`, `video_path` | the call and its sibling media (paths may be null) |
 | `sections` | the call cut at each `topic` press, in time order (one implicit section when there are none, which is every single-marker call) |
 | `rollup` | `yours` / `theirs` / `questions` / `unowned`, across all sections |
+| `far_side`, `duration` | every non-`You` label in first-heard order (`Caller` or a caption name), and the call length in seconds |
 | `groups`, `counts`, `total` | the old by-type view, still there if you want a count row |
 | `aside_total`, `aside_paired` | how many spoken flags there were, and how many folded into a press |
 | `markers_manifest` | path to `markers.json` next to the transcript, or null on a legacy call |
@@ -163,7 +164,8 @@ error.
   One entry per distinct task, at the second it was asked or promised. Owner is
   `me` (Sam), `them`, `unclear`, or `question`. Write the one-liner as the task,
   with who and where when the transcript says ("Post in #devrel tagging Greg and
-  Corey: ..."). Skip only an exact duplicate of a flagged item: the same task, not
+  Corey: ..."). Name the person: who asked Sam, or who owes him (see `person`
+  below). Skip only an exact duplicate of a flagged item: the same task, not
   just the same topic. A flagged press is never dropped in favor of a guess.
 - **Decisions** stay separate: direction and agreements, never a re-listing of
   tasks above.
@@ -194,12 +196,22 @@ TOPICS  = {304: ("Pricing", "optional one-line lede")}   # keyed by section star
 SUBJECTS = [(0, "Intros", ""), (412, "Eval results", "optional lede")]
             # (start_t, name[, lede]); replaces the topic-press cut and TOPICS.
             # Required on single-marker calls longer than one subject.
-ONE     = {304: "One sentence per item, keyed by the item's t."}
+ONE     = {304: "One sentence per item, keyed by the item's t.",
+           413: ("Share the UTM generator with him.", "Corey")}
+            # A value may be (one-liner, person) on a task press: the person
+            # who asked Sam (action-me) or who owes it (action-them).
 DECISIONS = [("Bold one-liner.", "A sentence of context.")]
 INFERRED = [(1973, "me", "Ask Labs about hosting the podcast on their page."),
             (558, "them", "Fix the Ramp approval today."),
-            (2109, "me", "Thread in #devrel tagging Greg.", "added by Sam")]
-            # (t, owner, one-liner[, badge]); owner: me | them | unclear | question.
+            (2109, "me", "Thread in #devrel tagging Greg.", "added by Sam"),
+            (348, "me", "Share the demo skill with him.", "inferred", "Corey"),
+            {"t": 1659, "owner": "me", "text": "Post in the team channel.",
+             "person": "Corey"}]
+            # (t, owner, one-liner[, badge[, person]]), or a dict with those keys
+            # (badge and person optional); owner: me | them | unclear | question.
+            # person: for `me`, who asked Sam; leave it out when he volunteered.
+            # For `them`, who will do it; on a two-party call it defaults to the
+            # one far-side label, so name it only on a group call.
             # Badge defaults to "inferred". Use "added by Sam" for tasks he names
             # after the fact, "at marker" for an ask or commitment found in a
             # marker's context window. No ONE entry needed; the one-liner is the third field.
@@ -212,30 +224,56 @@ Every `t` in `ONE` must match an item's `t` exactly, or that item renders "No
 summary for this moment." Check the rendered page for that string before you call
 a call done.
 
+**Phrase every task one-liner as an action that starts with a verb** ("Share the
+deck with Greg.", not "Corey wants the deck"). The renderer builds the roll-up
+sentence around it: "Corey asked you to share the deck with Greg.", "You said
+you'd share the deck with Greg." when no person asked, and "Corey will send the
+list." for what is owed. Do not write "Corey asked you to" into the text itself;
+a one-liner that already opens that way is left as written.
+
+**People.** Any transcript label other than `You` is the far side: `Caller` when
+no name was captured, or the name Meet captions supplied (`[Corey Weathers]`).
+The digest lists them in `far_side`, and the header reads "with Sam, <labels>".
+An unnamed `Caller` renders as "They" in task sentences.
+
+**Summary JSON.** Next to the page the renderer writes `<name>-summary.json` for
+the cross-call log: `title`, `date`, `duration`, `people`, `summary`,
+`decisions`, `asks_of_you`, `owed_to_you`, `questions`, `owner_unclear`,
+`subjects`, and `markers` (`t`, `summary`, `frame`). Each task carries `t`,
+`person` (null when Sam volunteered or nobody was named), `text` (the one-liner),
+`line` (the rendered sentence), and `badge` (`inferred`, `at marker`, `added by
+Sam`, `said out loud`, or `pressed`).
+
 The rules the renderer already enforces, for reference when reviewing output:
 
-The page is meant to read like a one-pager. A reader should get the whole call
-from the roll-up and the one-liners without opening anything; everything else
-folds away. Judge every layout choice against that.
+The page answers "what do I have to do" before anything else. Everything a reader
+acts on sits above the fold; everything else is in one closed disclosure.
 
-- **Roll-up first**, before any section. Use the item's one-liner as its text.
-  Omit `Theirs`, `Open questions`, and `Owner unclear` when empty. Keep `Yours`
-  always, showing its "Nothing landed on you" line when it is empty, because an
-  absent heading reads as "not checked" and an explicit one reads as "checked, none".
-- **Marked moments** follow Decisions in the roll-up card: every `marker` item
-  with its summary and seek button, so the presses read as the call's outline.
-- **Decisions go inside the roll-up card, directly after `Theirs`**, not at the
-  bottom of the page. They are context for what you owe, so they belong next to it.
-  Each decision renders as a two-column grid row (fixed 13rem label, then context)
-  so the labels and the context lines align down the card. Keep the bold
-  one-liner short enough to sit in that column in two or three lines.
+- **Above the fold, in this order:**
+  1. Header: title, then date, length and who was there, then the sticky audio
+     player so every seek button works from anywhere on the page.
+  2. **Asks of you** (`rollup.yours`): "<Person> asked you to ..." or "You said
+     you'd ...", each with its badge and a `▶ h:mm:ss` seek button. Always
+     present, with "Nothing landed on you." when empty, because an absent heading
+     reads as "not checked" and an explicit one reads as "checked, none".
+  3. **Owed to you** (`rollup.theirs`): "<Person> will ...". Also always present.
+  4. **Summary**, the legacy note, then **Decisions** as a short two-column list
+     (fixed 13rem label, then context; keep the bold one-liner to two or three
+     lines in that column).
+  5. **Marked moments**: every press that is a moment rather than a task (every
+     `marker` press; on a legacy call `important`, `quote`, `video` and the like)
+     with its summary, a frame thumbnail when there is one, and a seek button.
+- **Below the fold:** one native `<details class="more">`, closed by default and
+  working without JS, holding Open questions, Owner unclear, and every section
+  with its items. Its summary line counts what is inside.
 - **Evidence folds.** Each item's context quotes and its screenshot go inside a
   closed `<details class="ev">`. The `<summary>` says what is in it: `6 lines`, or
   `6 lines + screen` for a video item. Omit the `<details>` when an item has no
   context and no screenshot. Never render an item's quotes open.
-- **Side nav.** One `<a>` per anchor, in page order: `#rollup` as "Summary", then
-  one per section using its topic or subject name (`Before the first topic` for
-  an implicit one). Every section needs a matching `id`. The scrollspy in the template reads
+- **Side nav.** One `<a>` per anchor, in page order: the above-the-fold cards,
+  "Show more", then indented links into the disclosure, one per section using its
+  topic or subject name (`Before the first topic` for an implicit one). A click on
+  one opens the disclosure first. Every section needs a matching `id`. The scrollspy in the template reads
   the nav's own hrefs, so the two cannot drift apart.
 - **Sections in order.** For `implicit: true`, drop the `<h2>` and render its items
   bare. A call with no topic presses is one implicit section and looks like an

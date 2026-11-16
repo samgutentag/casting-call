@@ -89,6 +89,15 @@ def fold_names(frame_counts):
     return canon
 
 
+SELF_MISREADS = {'you', 'vou', 'yov', 'vov', 'yuo', 'jou', 'yoo'}
+
+
+def is_self_label(label):
+    """Meet labels Sam "You"; OCR also reads it as "vou", "Yov" or "You.", and a
+    short label that close to "you" is never a real far-side name."""
+    return _norm(label).replace('0', 'o') in SELF_MISREADS
+
+
 def find_people(frames, min_frames=MIN_FRAMES):
     """From [(t, lines, found)], return (canon, people, spellings).
 
@@ -100,7 +109,7 @@ def find_people(frames, min_frames=MIN_FRAMES):
     for _, lines, _ in frames:
         counts.update({clean_label(text) for text, is_label in lines if is_label})
     counts.pop('', None)
-    canon = {lab: SELF_LABEL for lab in counts if _norm(lab) == 'you'}
+    canon = {lab: SELF_LABEL for lab in counts if is_self_label(lab)}
     canon.update(fold_names({lab: n for lab, n in counts.items() if lab not in canon}))
 
     spellings = defaultdict(dict)

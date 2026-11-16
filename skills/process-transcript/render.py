@@ -554,7 +554,8 @@ def render_call(digest, L, out, transcript=None, digest_path=None):
     one = L.ONE
     out_dir = str(Path(out).resolve().parent)
     r = digest["rollup"]
-    people = ["Sam"] + far
+    # Unresolved "Caller" lines are not an extra person once real names exist.
+    people = ["Sam"] + [p for p in far if p != UNNAMED or len(far) == 1]
     duration = duration_of(digest, lines)
 
     def task_li(i, cls):
@@ -675,11 +676,18 @@ def render_call(digest, L, out, transcript=None, digest_path=None):
                 + "\n</nav>")
     player = (f'  <div class="player"><audio id="player" controls preload="none" '
               f'src="file://{audio}"></audio></div>\n\n' if audio else "")
+    stats = [(length_str(duration), "call length"),
+             (str(len(people)), "people" if len(people) != 1 else "person"),
+             (str(len(r.get("yours", []))), "asks of you"),
+             (str(len(r.get("theirs", []))), "owed to you"),
+             (str(len(marked)), "marked moments")]
+    tiles = ('  <div class="tiles">' + "".join(
+        f'<div class="tile"><b>{v}</b><span>{k}</span></div>' for v, k in stats) + "</div>\n")
     meta = " &middot; ".join([e(L.DATE), length_str(duration),
                               "with " + e(", ".join(people))])
     page = (head + "<body>\n\n" + nav_html + "\n\n<main>\n"
             f'  <h1>{e(L.TITLE)}</h1>\n  <p class="date">{meta}</p>\n\n'
-            + player + "\n".join(fold) + "\n" + more_html
+            + tiles + player + "\n".join(fold) + "\n" + more_html
             + "</main>\n\n" + tpl.split("</main>")[1])
     Path(out).write_text(page, encoding="utf-8")
     summary_path(digest, out).write_text(

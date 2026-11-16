@@ -167,3 +167,11 @@ def test_main_skips_cleanly_without_meet(tmp_path, capsys):
     assert 'no Meet on screen' in capsys.readouterr().out
     assert txt.read_text() == TRANSCRIPT
     assert not (tmp_path / 'parts' / 'pre-names.txt').exists()
+
+
+def test_ocr_variants_of_you_are_self():
+    from casting_call.names import is_self_label
+    for lab in ("You", "vou", "Yov", "You.", "you"):
+        assert is_self_label(lab), lab
+    for lab in ("Ed", "Yuki Tanaka", "Corey", "Naomi", "Yui", "Yon"):
+        assert not is_self_label(lab), lab

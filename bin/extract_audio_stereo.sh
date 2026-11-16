@@ -91,6 +91,14 @@ MARKER_MODE="${MARKER_MODE:-auto}"
 # each Deepgram speaker instead of each line.
 TRANSCRIBER="${TRANSCRIBER:-deepgram}"
 
+# RIPA_PYTHON picks the python3 for the helper modules (a venv with rich, say).
+# Styling is optional: gum for step headers, spinners and the closing box, rich
+# for live status and the summary table. Without them, or with RIPA_PLAIN=1,
+# the output is plain text.
+PY="${RIPA_PYTHON:-python3}"
+USE_GUM=0
+if [ "${RIPA_PLAIN:-0}" != "1" ] && [ -t 1 ] && command -v gum &>/dev/null; then USE_GUM=1; fi
+
 WHISPER_BIN="whisper-cli"
 WHISPER_METAL_RESOURCES="$(brew --prefix whisper-cpp)/share/whisper-cpp"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -201,11 +209,53 @@ long_spans() {
 # A python3 with the OCR layer (numpy, pillow, pytesseract), or empty.
 ocr_python() {
     local py
-    for py in python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    for py in ${RIPA_PYTHON:+"$RIPA_PYTHON"} python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
         if command -v "$py" &>/dev/null && "$py" -c 'import numpy, PIL, pytesseract' 2>/dev/null; then
             echo "$py"; return
         fi
     done
+}
+
+# Wall-clock seconds with decimals (macOS bash 3.2 has no EPOCHREALTIME).
+now() { perl -MTime::HiRes=time -e 'printf "%.1f\n", time'; }
+
+# step_done <name> <status> <started-at> [note]: one row of the closing summary.
+step_done() {
+    local secs
+    secs=$(awk -v a="$3" -v b="$(now)" 'BEGIN{printf "%.1f", b-a}')
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$secs" "${4:-}" >> "$steps_tsv"
+}
+
+# A recording's header line: styled with gum when it is there.
+ui_title() {
+    if [ "$USE_GUM" = "1" ]; then
+        gum style --bold --foreground "#56B4E9" "$1"
+    else
+        echo "$1"
+    fi
+}
+
+# run_spin <title> <command...>: a spinner while a quiet command runs.
+run_spin() {
+    local title="$1"; shift
+    if [ "$USE_GUM" = "1" ]; then
+        gum spin --spinner dot --title "  $title" --show-error -- "$@"
+    else
+        echo "  → $title"
+        "$@"
+    fi
+}
+
+# wait_spin <title> <pid>: wait for a background job, with a spinner.
+wait_spin() {
+    local title="$1" pid="$2"
+    if [ "$USE_GUM" = "1" ]; then
+        gum spin --spinner dot --title "  $title" -- \
+            bash -c "while kill -0 $pid 2>/dev/null; do sleep 0.3; done"
+    else
+        echo "  → $title"
+    fi
+    wait "$pid"
 }
 
 # Fraction (0..1) of duration covered by silence.
@@ -371,7 +421,57 @@ transcribe_any() {
     transcribe_track "$wav" "$srt_base" "$label" "$spans"
 }
 
+# A track whose wav is essentially silence (>= 95%) is not sent anywhere.
+track_silent() {
+    local dur frac
+    dur=$(get_duration "$1")
+    frac=$(silent_fraction "$2" "${dur:-0}")
+    awk -v f="$frac" 'BEGIN{exit !(f >= 0.95)}'
+}
+
+# Both tracks to Deepgram at once; a track that fails falls back to whisper on
+# its own, with the same header lines transcribe_any writes.
+transcribe_both_deepgram() {
+    local dg_args=() status_json="/tmp/whisper_${filename}_dg_status.json" track label wav spans
+    : > "$status_json"
+    if track_silent "$tmp_you" "$spans_you"; then
+        echo "  ⏭  ${YOU_LABEL} track is essentially silent, skipping transcription"
+        : > "${tmp_srt_you}"; echo "# transcript you: none (track silent)" >> "$tmp_engine_header"
+    else
+        dg_args+=(--you "$tmp_you" --you-srt "$tmp_srt_you")
+    fi
+    if track_silent "$tmp_caller" "$spans_caller"; then
+        echo "  ⏭  ${CALLER_LABEL} track is essentially silent, skipping transcription"
+        : > "${tmp_srt_caller}"; echo "# transcript caller: none (track silent)" >> "$tmp_engine_header"
+    else
+        dg_args+=(--caller "$tmp_caller" --caller-srt "$tmp_srt_caller")
+    fi
+    [ ${#dg_args[@]} -eq 0 ] && return
+    ( cd "$REPO_DIR" && "$PY" -m casting_call.parallel deepgram --parts "$parts_dir" \
+        --status "$status_json" "${dg_args[@]}" )
+    for track in you caller; do
+        case " ${dg_args[*]} " in *" --$track "*) ;; *) continue ;; esac
+        local verdict reason
+        verdict=$( "$PY" -c 'import json,sys; r=json.load(open(sys.argv[1])).get(sys.argv[2]) or {}; print("ok" if r.get("ok") else "failed"); print(r.get("reason") or "no result")' "$status_json" "$track" 2>/dev/null )
+        reason=$(echo "$verdict" | sed -n 2p); verdict=$(echo "$verdict" | sed -n 1p)
+        if [ "$verdict" = "ok" ]; then
+            local note="Deepgram nova-3 (mip_opt_out)"
+            [ "$track" = "caller" ] && note+=", diarized"
+            echo "# transcript ${track}: $note" >> "$tmp_engine_header"
+            printf -v "engine_${track}" '%s' deepgram
+        else
+            if [ "$track" = "you" ]; then label="$YOU_LABEL"; wav="$tmp_you"; spans="$spans_you"
+            else label="$CALLER_LABEL"; wav="$tmp_caller"; spans="$spans_caller"; fi
+            echo "  ⚠⚠ ${label}: Deepgram failed (${reason:-unknown}); transcribing with whisper instead"
+            echo "# transcript ${track}: whisper (Deepgram failed: ${reason:-unknown})" >> "$tmp_engine_header"
+            transcribe_track "$wav" "/tmp/whisper_${filename}_${track}" "$label" "$spans"
+        fi
+    done
+    rm -f "$status_json"
+}
+
 # ── run ──────────────────────────────────────────────────────────────────────
+run_began=$(now)
 total=${#recordings[@]}
 echo "Found $total recording(s) (.mkv/.mp4)"
 echo "Model: $WHISPER_MODEL"
@@ -402,7 +502,11 @@ for input_file in "${recordings[@]}"; do
     engine_you=whisper; engine_caller=whisper
     rm -f "$parts_dir/caller.speakers.json"
 
-    echo "[$current/$total] $filename"
+    ui_title "[$current/$total] $filename"
+    rec_began=$(now)
+    steps_tsv="/tmp/whisper_${filename}_steps.tsv"
+    : > "$steps_tsv"
+    ocr_pid=""
 
     if [ -f "$txt_out" ]; then
         echo "  ⏭  Transcript already exists, skipping"; continue
@@ -432,12 +536,25 @@ for input_file in "${recordings[@]}"; do
 
     mkdir -p "$parts_dir"
 
+    # Caption frames for the naming step, read in the background from here on,
+    # so the slow OCR pass overlaps the demux and the transcription instead of
+    # following them. A cache left by an earlier run of this video is reused.
+    frames_cache="$parts_dir/caption-frames.json"
+    if [ "$CAPTION_NAMES" = "1" ] && [ ! -s "$frames_cache" ] && has_stream "$input_file" v:0 \
+        && command -v tesseract &>/dev/null && [ -n "$(ocr_python)" ]; then
+        ocr_began=$(now)
+        ( cd "$REPO_DIR" && "$(ocr_python)" -m casting_call.parallel ocr "$input_file" \
+            --frames "$frames_cache" > "$parts_dir/caption-frames.log" 2>&1 ) &
+        ocr_pid=$!
+        echo "  → Reading Meet caption frames in the background"
+    fi
+
     # ONE demux pass. filter_complex fans each track into: a 16k mono WAV (whisper,
     # transient) and a source-rate MP3 (deliverable). you/caller get loudnorm; the
     # markers track is left raw. The combined mono MP3 is the master track when the
     # rig recorded one, else an amix of the separate tracks; either way it is
     # loudnorm'd so it sits at a sane level.
-    echo "  → Extracting tracks ($n_tracks in file)..."
+    step_began=$(now)
     LN="loudnorm=I=-16:TP=-1.5:LRA=11"
     # With a master track the per-track mix branch (x) is not needed.
     if [ -n "$master_s" ]; then split="asplit=2"; x=""; else split="asplit=3"; x="x"; fi
@@ -460,10 +577,14 @@ for input_file in "${recordings[@]}"; do
         fc+="${mix_in}amix=inputs=${n_mix}:normalize=1,${LN}[mix]"
     fi
     outs+=(-map "[mix]" -ac 1 -c:a libmp3lame -q:a 2 "$combined_mp3")
-    ffmpeg -i "$input_file" -filter_complex "$fc" "${outs[@]}" -y -loglevel error
+    run_spin "Extracting tracks ($n_tracks in file)..." \
+        ffmpeg -i "$input_file" -filter_complex "$fc" "${outs[@]}" -y -loglevel error
     if [ $? -ne 0 ] || [ ! -s "$tmp_you" ] || [ ! -s "$tmp_caller" ]; then
-        echo "  ✗ Extraction failed for $filename; skipping."; continue
+        echo "  ✗ Extraction failed for $filename; skipping."
+        [ -n "$ocr_pid" ] && kill "$ocr_pid" 2>/dev/null
+        continue
     fi
+    step_done "extract tracks" ok "$step_began"
 
     # Card backup: fill OBS dropouts in the track WAVs before anything measures
     # or transcribes them. Skipped entirely without a card take.
@@ -474,6 +595,7 @@ for input_file in "${recordings[@]}"; do
     if [ "$card_found" -ne 0 ] && [ -n "$card_note" ]; then
         echo "  ⚠  $card_note"
     fi
+    step_began=$(now)
     if [ "$card_found" -eq 0 ]; then
         echo "  → Card take found; lining it up and checking OBS for dropouts..."
         mk_arg=()
@@ -485,6 +607,9 @@ for input_file in "${recordings[@]}"; do
             | sed 's/^/  → /' )
         card_cues=$(cat "$tmp_card_cues" 2>/dev/null)
         card_filled_caller=$(cat "$tmp_card_filled" 2>/dev/null)
+        step_done "card take" ok "$step_began" "lined up, dropouts checked"
+    else
+        step_done "card take" skipped "$step_began" "no take found"
     fi
 
     # Detect silence BEFORE transcribing: spans clean hallucinations, and a
@@ -503,9 +628,18 @@ for input_file in "${recordings[@]}"; do
         fi
     fi
 
-    # Transcribe each track (dead tracks are skipped inside transcribe_track).
-    transcribe_any "$tmp_you" "/tmp/whisper_${filename}_you" "$YOU_LABEL" "$spans_you" you 0
-    transcribe_any "$tmp_caller" "/tmp/whisper_${filename}_caller" "$CALLER_LABEL" "$spans_caller" caller 1
+    # Transcribe each track (dead tracks are skipped). Deepgram takes both
+    # tracks at once; whisper runs them one after the other.
+    step_began=$(now)
+    if [ "$TRANSCRIBER" = "deepgram" ]; then
+        transcribe_both_deepgram
+    else
+        transcribe_any "$tmp_you" "/tmp/whisper_${filename}_you" "$YOU_LABEL" "$spans_you" you 0
+        transcribe_any "$tmp_caller" "/tmp/whisper_${filename}_caller" "$CALLER_LABEL" "$spans_caller" caller 1
+    fi
+    tr_status=ok
+    grep -q "whisper (Deepgram failed" "$tmp_engine_header" 2>/dev/null && tr_status=warn
+    step_done "transcribe" "$tr_status" "$step_began" "you: $engine_you, far side: $engine_caller"
 
     # Weave.
     echo "  → Merging transcripts..."
@@ -532,6 +666,7 @@ for input_file in "${recordings[@]}"; do
     # over each long stretch where the far side produced no lines at all, and
     # splice them in where they show someone else was talking. Runs after the
     # clean step, which has already dropped whisper's inventions on that silence.
+    step_began=$(now)
     caption_windows=$( cd "$REPO_DIR" && python3 -m casting_call.gaps "$txt_out" \
         --label "$CALLER_LABEL" --min "$CAPTION_TEXT_GAP_SECONDS" \
         --duration "$(get_duration "$input_file")" \
@@ -549,6 +684,7 @@ for input_file in "${recordings[@]}"; do
                 "$input_file" "$txt_out" --windows "$caption_windows" \
                 --parts "$parts_dir" --caller-label "$CALLER_LABEL" | sed 's/^/  → /' )
         fi
+        step_done "caption backup" ok "$step_began" "far side went quiet"
     fi
 
     # Caption names: rename [Caller] lines from Meet's caption speaker labels.
@@ -561,11 +697,28 @@ for input_file in "${recordings[@]}"; do
         echo "  ⚠  Caption names need tesseract + numpy/pillow/pytesseract; far side stays [${CALLER_LABEL}]"
         echo "     brew install tesseract && pip3 install pytesseract --break-system-packages"
     else
-        echo "  → Reading Meet caption names for the far side..."
+        names_frames=()
+        if [ -n "$ocr_pid" ]; then
+            wait_spin "Finishing caption frames (started $(fmt_hms "$(awk -v a="$ocr_began" -v b="$(now)" 'BEGIN{print int(b-a)}')") ago)..." "$ocr_pid"
+            ocr_status=$?
+            sed 's/^/  → /' "$parts_dir/caption-frames.log" 2>/dev/null
+            if [ "$ocr_status" -eq 0 ] && [ -s "$frames_cache" ]; then
+                step_done "caption frames" ok "$ocr_began" "read in the background"
+            else
+                step_done "caption frames" warn "$ocr_began" "background read failed; naming reads the video"
+            fi
+            ocr_pid=""
+        fi
+        [ -s "$frames_cache" ] && names_frames=(--frames "$frames_cache")
+        step_began=$(now)
+        echo "  → Naming the far side from Meet captions..."
         ( cd "$REPO_DIR" && "$(ocr_python)" -m casting_call.names \
-            "$input_file" "$txt_out" --parts "$parts_dir" \
+            "$input_file" "$txt_out" --parts "$parts_dir" "${names_frames[@]}" \
             --caller-label "$CALLER_LABEL" 2>&1 | sed 's/^/  → /' )
+        step_done "caption names" ok "$step_began"
     fi
+    # Caption names skipped: a background read still running is not needed.
+    [ -n "$ocr_pid" ] && { kill "$ocr_pid" 2>/dev/null; wait "$ocr_pid" 2>/dev/null; ocr_pid=""; }
 
     # The marker track (Track 4 now, Track 3 before 2026-10-08): pre-canned
     # marker phrases, if the rig recorded them.
@@ -584,6 +737,7 @@ for input_file in "${recordings[@]}"; do
     safe_note=$( cd "$REPO_DIR" && python3 -m casting_call.obslog "$input_file" )
     [ -n "$safe_note" ] && echo "  ⚠  $safe_note"
 
+    step_began=$(now)
     if [ -n "$mk_s" ]; then
         echo "  → Parsing markers (Track $((mk_s + 1)))..."
         # A marker track at digital silence usually means the marker audio went
@@ -610,6 +764,8 @@ for input_file in "${recordings[@]}"; do
             --extra-marks "$card_cues" \
             "${frame_args[@]}" \
             --parts-out "$parts_dir/markers.txt" | sed 's/^/  → /' )
+        n_marks=$(grep -c '\[MARKER\]' "$txt_out" 2>/dev/null)
+        step_done "markers + frames" ok "$step_began" "${n_marks:-0} marker(s)"
     fi
 
     # Relabel Caller lines from a caption-derived speaker timeline, if present.
@@ -646,7 +802,21 @@ print(f\"  ✓ {r['attributed_lines']}/{r['caller_lines']} Caller lines attribut
 
     rm -f "$tmp_you" "$tmp_caller" "$tmp_mk" "$tmp_srt_you" "$tmp_srt_caller" \
         "$tmp_card_header" "$tmp_card_cues" "$tmp_card_filled" "$tmp_engine_header"
+
+    echo ""
+    rec_secs=$(awk -v a="$rec_began" -v b="$(now)" 'BEGIN{printf "%.1f", b-a}')
+    ( cd "$REPO_DIR" && "$PY" -m casting_call.ui summary "$steps_tsv" --total "$rec_secs" \
+        --next "/process-transcript $rec_dir" )
+    rm -f "$steps_tsv"
+    echo ""
 done
 
-echo ""
-echo "Complete!  Output → $INPUT_DIR/<name>/ (combined mp3 + transcript, parts/ for tracks)"
+run_secs=$(awk -v a="$run_began" -v b="$(now)" 'BEGIN{print int(b-a)}')
+done_line="Complete in $(fmt_hms "$run_secs").  Output → $INPUT_DIR/<name>/ (transcript, mp3, parts/, markers/)"
+if [ "$USE_GUM" = "1" ]; then
+    gum style --border rounded --padding "0 1" --border-foreground "#009E73" \
+        "$done_line" "Next, in Claude Code: /process-transcript <the call folder above>"
+else
+    echo "$done_line"
+    echo "Next, in Claude Code: /process-transcript <the call folder above>"
+fi

@@ -92,6 +92,17 @@ Clip generation and P4next pad setup are in the [setup guide](docs/setup-guide.h
 The aliases live in my gutils shell config, not here. Every script works without them:
 `bash bin/<script>.sh ...` from the repo root.
 
+`ripa` sends both tracks to Deepgram at once and reads Meet caption frames in the
+background from the start, so an hour of call takes about as long as the slowest
+single step instead of all of them added up. It ends with a table of step times and
+the `/process-transcript` command to run next.
+
+Styling is optional. With [gum](https://github.com/charmbracelet/gum) on the PATH and
+`rich` importable (`pip install --break-system-packages rich`), `ripa` and `ripcard`
+draw spinners, live status, progress bars and a summary table. Without them, or with
+`RIPA_PLAIN=1`, they print plain text. `RIPA_PYTHON` picks the python3 for the helper
+modules (a venv with rich, for example).
+
 ## P4next card takes
 
 The P4next writes every channel to its microSD card as a backup of the OBS recording.

@@ -10,6 +10,9 @@
 #   CARD_INBOX       where takes go (default ~/Desktop/P4next-takes)
 #   PULL_ALL_INPUTS  1 also copies MIC2 to MIC4 (unused, digital silence)
 #   PULL_AGAIN       1 copies takes pulled before (normally skipped via <inbox>/.pulled)
+#   CARD_NO_EJECT    1 leaves the card mounted (testing)
+#   PULL_MAX_MBPS    cap copy speed, to try the progress display on a local folder
+#   RIPA_PYTHON      python3 to run the pull with; RIPA_PLAIN=1 turns styling off
 #
 # Nothing on the card is deleted or changed. Exits non-zero, and leaves the
 # card mounted, if any copy fails.
@@ -19,6 +22,9 @@
 CARD_VOLUME="${CARD_VOLUME:-/Volumes/P4NEXT_SD}"
 CARD_INBOX="${CARD_INBOX:-$HOME/Desktop/P4next-takes}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${RIPA_PYTHON:-python3}"
+USE_GUM=0
+if [ "${RIPA_PLAIN:-0}" != "1" ] && [ -t 1 ] && command -v gum &>/dev/null; then USE_GUM=1; fi
 
 if [ ! -d "$CARD_VOLUME" ]; then
     echo "Error: no card at $CARD_VOLUME. On the P4next: Menu > USB File Transfer."; exit 2
@@ -32,7 +38,7 @@ flags=()
 [ "${PULL_AGAIN:-0}" = "1" ] && flags+=(--again)
 
 echo "Pulling takes from $CARD_VOLUME into $CARD_INBOX..."
-( cd "$REPO_DIR" && python3 -m casting_call.pull "$CARD_VOLUME" "$CARD_INBOX" "${flags[@]}" )
+( cd "$REPO_DIR" && "$PY" -m casting_call.pull "$CARD_VOLUME" "$CARD_INBOX" "${flags[@]}" )
 status=$?
 if [ "$status" -ne 0 ]; then
     echo "✗ Pull failed (status $status). The card is still mounted; fix the error and rerun."
@@ -46,4 +52,9 @@ if ! diskutil eject "$CARD_VOLUME" >/dev/null; then
     echo "✗ Copied, but could not eject $CARD_VOLUME. Eject it in Finder."; exit 1
 fi
 echo ""
-echo "████  Card ejected. Exit USB File Transfer on the P4next now.  ████"
+if [ "$USE_GUM" = "1" ]; then
+    gum style --bold --border thick --padding "0 2" --border-foreground "#009E73" \
+        "ok  Card ejected. Exit USB File Transfer on the P4next now."
+else
+    echo "████  Card ejected. Exit USB File Transfer on the P4next now.  ████"
+fi

@@ -29,7 +29,7 @@ import sys
 import time
 from pathlib import Path
 
-from casting_call import card
+from casting_call import card, ui
 
 
 LEDGER = ".pulled"
@@ -74,6 +74,13 @@ def _copy_with_progress(src, dst, progress=None):
     """Plain data copy in chunks (nothing written back to the card), calling
     progress(bytes_done) as it goes."""
     done = 0
+    # PULL_MAX_MBPS slows a local test copy to card speed, so the progress
+    # display can be tried without the P4next.
+    try:
+        cap = float(os.environ.get("PULL_MAX_MBPS") or 0) * 1e6
+    except ValueError:
+        cap = 0
+    began = time.monotonic()
     with open(src, "rb") as fi, open(dst, "wb") as fo:
         while True:
             buf = fi.read(CHUNK)
@@ -81,6 +88,10 @@ def _copy_with_progress(src, dst, progress=None):
                 break
             fo.write(buf)
             done += len(buf)
+            if cap:
+                ahead = done / cap - (time.monotonic() - began)
+                if ahead > 0:
+                    time.sleep(ahead)
             if progress:
                 progress(done)
 
@@ -157,7 +168,7 @@ def pull_takes(volume, inbox, all_inputs=False, out=print, again=False):
     for take in sorted(takes):
         if take not in done:
             plans[take] = plan_take(takes[take], Path(inbox) / take, all_inputs)
-    bar = Bar(sum(src.stat().st_size for todo in plans.values() for src, _ in todo))
+    bar = ui.progress_bar(sum(src.stat().st_size for todo in plans.values() for src, _ in todo), Bar)
     for take in sorted(takes):
         if take in done:
             out(f"  {take}: pulled before, skipped")

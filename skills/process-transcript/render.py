@@ -426,8 +426,21 @@ def transcript_columns_html(lines, duration, audio):
     hint = " Scroll sideways for more people." if len(order) > 4 else ""
     return ('  <section class="card" id="columns">\n    <h2>Transcript by speaker</h2>\n'
             f'    <p class="lede">One column per person, in time order.{hint}</p>\n'
+            # A second, empty scroller above the grid mirrors its sideways
+            # scroll, so the bar sits at the top where the names are.
+            '    <div class="tcols-top" aria-hidden="true"><div></div></div>\n'
             f'    <div class="tcols-wrap"><div class="tcols" style="--n:{len(order)}">'
-            f'{head}{cells}</div></div>\n  </section>\n')
+            f'{head}{cells}</div></div>\n'
+            '    <script>(function(){var s=document.currentScript.parentNode,'
+            'top=s.querySelector(".tcols-top"),w=s.querySelector(".tcols-wrap"),'
+            'g=s.querySelector(".tcols"),busy=0;'
+            'function size(){top.firstChild.style.width=g.scrollWidth+"px";'
+            'top.style.display=g.scrollWidth>w.clientWidth?"block":"none"}'
+            'top.onscroll=function(){if(busy)return;busy=1;w.scrollLeft=top.scrollLeft;busy=0};'
+            'w.addEventListener("scroll",function(){if(busy)return;busy=1;top.scrollLeft=w.scrollLeft;busy=0});'
+            'window.addEventListener("resize",size);'
+            'var m=document.getElementById("more");if(m)m.addEventListener("toggle",size);size()})()</script>\n'
+            '  </section>\n')
 
 
 def display_name(label):

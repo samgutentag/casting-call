@@ -153,9 +153,9 @@ def test_speaker_without_a_clear_majority_stays_unnamed():
 
 
 def test_clear_leader_below_eighty_percent_is_named():
-    # 7 s of Dana, 2 s of Ed: 70% with a 3.5x lead, as real crosstalk looks.
-    speakers = {0: (0, 0.0, 9.0)}
-    words = _words([(0, 7, "Dana"), (7, 9, "Ed")])
+    # 30 s of Dana, 7 s of Ed: under 80% but a clear lead, as real crosstalk looks.
+    speakers = {0: (0, 0.0, 37.0)}
+    words = _words([(0, 30, "Dana"), (30, 37, "Ed")])
     labels, _ = names.name_speakers(speakers, words, ["Dana", "Ed"])
     assert labels == {0: "Dana"}
 

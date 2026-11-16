@@ -23,3 +23,7 @@ brag-output*/
 
 # small trimmed test fixtures are the exception
 !casting_call/tests/fixtures/**/*.wav
+
+# Claude Code session files: handoff snapshots and agent worktrees stay local
+.claude/handoffs/
+.claude/worktrees/

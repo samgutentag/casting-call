@@ -187,7 +187,7 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
       <text class="t-small" x="756" y="366">2. transcript, markers and</text>
       <text class="t-small" x="756" y="384">   a frame per marker</text>
       <text class="t-small" x="756" y="402">3. card take fills any</text>
-      <text class="t-small" x="756" y="420">   OBS gap (being built)</text>
+      <text class="t-small" x="756" y="420">   OBS gap</text>
 
       <path d="M204 114 L300 114" fill="none" stroke="var(--xlr)" stroke-width="3.5" marker-end="url(#aXlr)"/>
       <text class="t-small" x="222" y="104">XLR</text>
@@ -353,7 +353,7 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         <h3><span class="when">Before</span> about 2 minutes</h3>
         <ol class="checks">
           <li><label><input type="checkbox" id="c1"> Turn the P4next on with the POWER button. USB from the Mac powers it, and the card must be in.</label></li>
-          <li><label><input type="checkbox" id="c2"> Headphones in PHONES 1. In Meet, check that speaker and mic both say <code>ZOOM P4next</code>, not AirPods or the MacBook. In OBS, check the scene is <code>Call P4</code>.</label></li>
+          <li><label><input type="checkbox" id="c2"> Headphones in PHONES 1. In Meet, check that speaker and mic both say <code>ZOOM P4next</code>, not AirPods or the MacBook. In OBS, check the scene is <code>Call P4</code>. Turn on Meet captions (CC): the far-side names in the transcript come from them.</label></li>
           <li><label><input type="checkbox" id="c3"> Talk for a few seconds. The IN 1 meter should peak between −12 and −6 dBFS; turn the input 1 knob if it doesn't.</label></li>
           <li><label><input type="checkbox" id="c4"> Start OBS recording.</label></li>
           <li><label><input type="checkbox" id="c5"> Press REC on the P4next. Check that the red light is on and the timer is counting. Then tap <strong>pad A</strong> once: that press lands on both OBS and the card, and ripa uses it to line them up.</label></li>
@@ -368,17 +368,18 @@ ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 68ch; }
         </ol>
       </div>
       <div class="phase">
-        <h3><span class="when">After</span> about 3 minutes</h3>
+        <h3><span class="when">After</span> about 10 minutes</h3>
         <ol class="checks">
           <li><label><input type="checkbox" id="c9"> Press STOP on the P4next, then stop OBS.</label></li>
-          <li><label><input type="checkbox" id="c10"> On the P4next, open the menu, choose <code>USB File Transfer</code>, and the card mounts on the Mac.</label></li>
-          <li><label><input type="checkbox" id="c11"> Leave the card mounted while you run <code>ripa</code>: it copies the matching take from <code>P4next_Multitrack/</code> into the call's folder.</label></li>
-          <li><label><input type="checkbox" id="c12"> Run <code>ripa</code> in the call folder. It writes the transcript, a frame per marker, and fills any OBS gap from the card.</label></li>
-          <li><label><input type="checkbox" id="c13"> Eject the card on the Mac and exit USB File Transfer, so the P4next is the Mac's audio device again.</label></li>
+          <li><label><input type="checkbox" id="c10"> On the P4next, open the menu and choose <code>USB File Transfer</code>. The card mounts on the Mac, and computer audio goes quiet until you exit.</label></li>
+          <li><label><input type="checkbox" id="c11"> Run <code>ripcard</code>. It copies new takes to <code>~/Desktop/P4next-takes/</code>, ejects the card, and says when to exit. Then exit USB File Transfer right away.</label></li>
+          <li><label><input type="checkbox" id="c12"> Calls worth keeping: move the <code>.mkv</code> into <code>call_logs/&lt;week&gt;/&lt;date&gt;/</code> and rename it, then move its take folder next to it as <code>&lt;same name&gt;.card/</code>.</label></li>
+          <li><label><input type="checkbox" id="c13"> Run <code>ripa</code> in the day folder. It writes the transcript with far-side names from the captions, a frame per marker, and fills any OBS gap from the card.</label></li>
+          <li><label><input type="checkbox" id="c14"> Run <code>/process-transcript</code> on the call folder. Asks of you and owed to you come first; the rest is under Show more.</label></li>
         </ol>
       </div>
     </div>
-    <p class="note">Being built: copying the card take and filling OBS gaps from it. Until that ships, <code>ripa</code> works from the OBS file alone, markers and frames included, and the card files stay safe on the card.</p>
+    <p class="note">Clear the card from the P4next menu now and then: <code>ripcard</code> never deletes takes from it.</p>
   </section>
 
   <div class="cols">

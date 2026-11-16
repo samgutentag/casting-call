@@ -249,14 +249,17 @@ ALREADY_PHRASED = re.compile(
 
 def far_side(digest, lines):
     """Far-side labels in first-heard order: the digest's, else read off the
-    transcript, else off the context lines. Anything but `You` counts."""
+    transcript, else off the context lines. Context lines carry `side` on a
+    current digest; render.py stays importable without the package, so older
+    lines fall back to "anything but You"."""
     if digest.get("far_side"):
         return list(digest["far_side"])
     pool = lines or [c for s in digest["sections"] for i in s["items"]
                      for c in i.get("context") or []]
     seen = []
     for c in sorted(pool, key=lambda c: c["t"]):
-        if c["label"] not in SELF_NAMES and c["label"] != "MARKER" and c["label"] not in seen:
+        far = c.get("side") == "far" if "side" in c else c["label"] not in SELF_NAMES + ("MARKER",)
+        if far and c["label"] not in seen:
             seen.append(c["label"])
     return seen
 
